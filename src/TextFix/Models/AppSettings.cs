@@ -33,6 +33,14 @@ public class AppSettings
     public int OverlayAutoApplySeconds { get; set; } = 3;
     public bool StartWithWindows { get; set; }
 
+    public string ActiveModeName { get; set; } = "Fix errors";
+
+    public CorrectionMode GetActiveMode()
+    {
+        return CorrectionMode.Defaults.FirstOrDefault(m => m.Name == ActiveModeName)
+            ?? CorrectionMode.Defaults[0];
+    }
+
     [JsonIgnore]
     public static string DefaultPath =>
         Path.Combine(

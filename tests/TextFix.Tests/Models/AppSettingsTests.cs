@@ -110,4 +110,40 @@ public class AppSettingsTests : IDisposable
         Assert.Equal("", settings.ApiKey);
         Assert.NotEmpty(settings.EncryptedApiKey);
     }
+
+    [Fact]
+    public void Defaults_ActiveModeIsFixErrors()
+    {
+        var settings = new AppSettings();
+        Assert.Equal("Fix errors", settings.ActiveModeName);
+    }
+
+    [Fact]
+    public void GetActiveMode_ReturnsMatchingMode()
+    {
+        var settings = new AppSettings { ActiveModeName = "Professional" };
+        var mode = settings.GetActiveMode();
+        Assert.Equal("Professional", mode.Name);
+        Assert.Contains("professional", mode.SystemPrompt, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void GetActiveMode_FallsBackToFixErrors_WhenNameInvalid()
+    {
+        var settings = new AppSettings { ActiveModeName = "NonexistentMode" };
+        var mode = settings.GetActiveMode();
+        Assert.Equal("Fix errors", mode.Name);
+    }
+
+    [Fact]
+    public async Task RoundTrip_PreservesActiveModeName()
+    {
+        var original = new AppSettings { ActiveModeName = "Concise" };
+        var path = Path.Combine(_tempDir, "mode_test.json");
+
+        await original.SaveAsync(path);
+        var loaded = await AppSettings.LoadAsync(path);
+
+        Assert.Equal("Concise", loaded.ActiveModeName);
+    }
 }
