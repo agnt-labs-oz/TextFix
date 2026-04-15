@@ -7,10 +7,12 @@ public class CorrectionService
     private readonly ClipboardManager _clipboard;
     private readonly FocusTracker _focusTracker;
     private readonly AppSettings _settings;
+    private readonly CorrectionHistory _history = new();
     private AiClient _aiClient;
     private CancellationTokenSource? _cts;
 
     public CorrectionResult? LastResult { get; private set; }
+    public CorrectionHistory History => _history;
 
     public CorrectionService(ClipboardManager clipboard, FocusTracker focusTracker, AiClient aiClient, AppSettings settings)
     {
@@ -51,6 +53,7 @@ public class CorrectionService
             return;
 
         LastResult = result;
+        _history.Add(result);
         CorrectionCompleted?.Invoke(result);
     }
 
