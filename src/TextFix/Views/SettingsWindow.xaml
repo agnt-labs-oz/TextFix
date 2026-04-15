@@ -183,8 +183,8 @@
         </StackPanel>
 
         <StackPanel Grid.Row="5">
-            <Label Content="Auto-apply delay (seconds, 0 = off)"/>
-            <TextBox x:Name="AutoApplyBox"/>
+            <Label Content="After correction"/>
+            <ComboBox x:Name="AfterCorrectionBox"/>
         </StackPanel>
 
         <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right">
