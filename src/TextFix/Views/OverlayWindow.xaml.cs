@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using WpfMedia = System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -18,15 +19,43 @@ public partial class OverlayWindow : Window
     private bool _showingError;
     private bool _showingApplied;
     private bool _keepOpen;
+    private bool _suppressModeChange;
 
     public event Action<bool>? UserResponded;
     public event Action? RetryRequested;
-    public event Action<bool>? KeepOpenChanged; // fired when user toggles pin
+    public event Action<bool>? KeepOpenChanged;
+    public event Action<string>? ModeChanged;
 
     public OverlayWindow()
     {
         InitializeComponent();
         KeyDown += OnKeyDown;
+        PopulateModes();
+    }
+
+    private void PopulateModes()
+    {
+        _suppressModeChange = true;
+        ModeBox.Items.Clear();
+        foreach (var mode in CorrectionMode.Defaults)
+        {
+            ModeBox.Items.Add(new ComboBoxItem { Content = mode.Name, Tag = mode.Name });
+        }
+        _suppressModeChange = false;
+    }
+
+    public void SetActiveMode(string modeName)
+    {
+        _suppressModeChange = true;
+        for (int i = 0; i < ModeBox.Items.Count; i++)
+        {
+            if (ModeBox.Items[i] is ComboBoxItem item && (string)item.Tag == modeName)
+            {
+                ModeBox.SelectedIndex = i;
+                break;
+            }
+        }
+        _suppressModeChange = false;
     }
 
     public void ShowProcessing()
@@ -133,7 +162,7 @@ public partial class OverlayWindow : Window
         ResultPanel.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
         InfoPanel.Visibility = Visibility.Visible;
-        InfoText.Text = "Focus changed — Ctrl+V to paste";
+        InfoText.Text = "Focus changed \u2014 Ctrl+V to paste";
         InfoHint.Visibility = Visibility.Collapsed;
 
         FadeAndClose(_keepOpen ? 5 : 3);
@@ -141,24 +170,58 @@ public partial class OverlayWindow : Window
 
     private void UpdatePinIcon()
     {
-        PinToggle.Text = _keepOpen ? "\uD83D\uDCCC" : "\uD83D\uDCCCpin";
-        // Use simple text: pinned = filled pushpin, unpinned = outline
-        PinToggle.Text = _keepOpen ? "\u2759" : "\u25CB"; // ❙ vs ○
-        // Actually use clearer text
         PinToggle.Text = _keepOpen ? "Pinned" : "Pin open";
         PinToggle.Foreground = _keepOpen
             ? new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x6C, 0x63, 0xFF))
             : new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x66, 0x66, 0x66));
     }
 
-    private void OnPinToggle(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    private void OnPinToggle(object sender, MouseButtonEventArgs e)
     {
         _keepOpen = !_keepOpen;
         UpdatePinIcon();
         KeepOpenChanged?.Invoke(_keepOpen);
     }
 
-    private void FadeOutAndHide()
+    // --- Clickable button handlers ---
+
+    private void OnApplyClick(object sender, RoutedEventArgs e)
+    {
+        StopAutoApply();
+        if (!_showingError && !_showingApplied)
+            UserResponded?.Invoke(true);
+    }
+
+    private void OnCancelClick(object sender, RoutedEventArgs e)
+    {
+        StopAutoApply();
+        UserResponded?.Invoke(false);
+        FadeOutAndHide();
+    }
+
+    private void OnRetryClick(object sender, RoutedEventArgs e)
+    {
+        StopAutoApply();
+        Hide();
+        RetryRequested?.Invoke();
+    }
+
+    private void OnDismissClick(object sender, RoutedEventArgs e)
+    {
+        StopAutoApply();
+        FadeOutAndHide();
+    }
+
+    private void OnModeChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressModeChange) return;
+        if (ModeBox.SelectedItem is ComboBoxItem item)
+            ModeChanged?.Invoke((string)item.Tag);
+    }
+
+    // --- End button handlers ---
+
+    public void FadeOutAndHide()
     {
         var fadeOut = (Storyboard)FindResource("FadeOut");
         var clone = fadeOut.Clone();
@@ -214,7 +277,6 @@ public partial class OverlayWindow : Window
             else
             {
                 UserResponded?.Invoke(true);
-                // App.xaml.cs decides to ShowApplied() or FadeOutAndHide()
             }
         }
         else if (e.Key == Key.Escape)

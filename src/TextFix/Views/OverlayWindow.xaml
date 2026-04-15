@@ -22,18 +22,126 @@
                 </Setter.Value>
             </Setter>
         </Style>
-        <Style x:Key="HintPill" TargetType="Border">
-            <Setter Property="CornerRadius" Value="4"/>
-            <Setter Property="Padding" Value="4,2"/>
+        <Style x:Key="ActionButton" TargetType="Button">
+            <Setter Property="Padding" Value="10,4"/>
             <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.7"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
         <Style x:Key="PinButton" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontSize" Value="12"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="ToolTip" Value="Pin overlay open"/>
             <Setter Property="HorizontalAlignment" Value="Right"/>
             <Setter Property="Margin" Value="0,0,0,4"/>
         </Style>
+
+        <!-- Dark ComboBox for mode selector in overlay -->
+        <ControlTemplate x:Key="OverlayComboBoxToggle" TargetType="ToggleButton">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition/>
+                    <ColumnDefinition Width="18"/>
+                </Grid.ColumnDefinitions>
+                <Border x:Name="Border" Grid.ColumnSpan="2" Background="#2A2A3E"
+                        BorderBrush="#555" BorderThickness="1" CornerRadius="3"/>
+                <Path x:Name="Arrow" Grid.Column="1" Fill="#AAAAAA"
+                      HorizontalAlignment="Center" VerticalAlignment="Center"
+                      Data="M 0 0 L 3 3 L 6 0 Z"/>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter TargetName="Border" Property="BorderBrush" Value="#6C63FF"/>
+                </Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+        <Style x:Key="OverlayComboBox" TargetType="ComboBox">
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="Background" Value="#2A2A3E"/>
+            <Setter Property="Height" Value="24"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Template="{StaticResource OverlayComboBoxToggle}"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                          Focusable="False" ClickMode="Press"/>
+                            <ContentPresenter IsHitTestVisible="False"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              Margin="6,0,20,0"
+                                              VerticalAlignment="Center"
+                                              HorizontalAlignment="Left">
+                                <ContentPresenter.Resources>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#E0E0E0"/>
+                                    </Style>
+                                </ContentPresenter.Resources>
+                            </ContentPresenter>
+                            <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
+                                   Focusable="False" AllowsTransparency="True" PopupAnimation="Slide">
+                                <Border Background="#2A2A3E" BorderBrush="#555" BorderThickness="1"
+                                        CornerRadius="3" Margin="0,2,0,0"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                                        MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}">
+                                    <ScrollViewer>
+                                        <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="OverlayComboBoxItem" TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="#2A2A3E"/>
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBoxItem">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsHighlighted" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#6C63FF"/>
+                                <Setter Property="Foreground" Value="White"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3D3D5F"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Storyboard x:Key="FadeOut">
             <DoubleAnimation Storyboard.TargetName="OverlayWin"
                              Storyboard.TargetProperty="Opacity"
@@ -41,7 +149,7 @@
         </Storyboard>
     </Window.Resources>
 
-    <Border x:Name="MainBorder" Style="{StaticResource PillBorder}" MaxWidth="400">
+    <Border x:Name="MainBorder" Style="{StaticResource PillBorder}" MaxWidth="420">
         <StackPanel>
             <!-- Processing state: spinner + "Correcting..." -->
             <StackPanel x:Name="ProcessingPanel" Orientation="Horizontal" Visibility="Visible">
@@ -56,39 +164,55 @@
                            FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
             </StackPanel>
 
-            <!-- Result state: diff + buttons -->
+            <!-- Result state: diff + buttons + mode selector -->
             <StackPanel x:Name="ResultPanel" Visibility="Collapsed">
-                <!-- Pin toggle -->
-                <TextBlock x:Name="PinToggle" Style="{StaticResource PinButton}"
-                           MouseLeftButtonDown="OnPinToggle"/>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
-                    <TextBlock x:Name="StatusIcon" Text="&#x2713;" Foreground="#4ADE80"
-                               FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                    <TextBlock x:Name="StatusText" Text="" Foreground="#E0E0E0"
-                               FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
-                </StackPanel>
+                <!-- Header row: status + pin toggle -->
+                <DockPanel Margin="0,0,0,8">
+                    <TextBlock x:Name="PinToggle" Style="{StaticResource PinButton}"
+                               DockPanel.Dock="Right"
+                               MouseLeftButtonDown="OnPinToggle"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="StatusIcon" Text="&#x2713;" Foreground="#4ADE80"
+                                   FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                        <TextBlock x:Name="StatusText" Text="" Foreground="#E0E0E0"
+                                   FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </DockPanel>
+
+                <!-- Original text (strikethrough) -->
                 <TextBlock x:Name="OriginalText" Foreground="#AAAAAA"
                            FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
                            TextDecorations="Strikethrough" Margin="0,0,0,4"/>
+                <!-- Corrected text -->
                 <TextBlock x:Name="CorrectedText" Foreground="#E0E0E0"
                            FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
-                           Margin="0,0,0,12"/>
-                <StackPanel Orientation="Horizontal">
-                    <Border Background="#6C63FF" Style="{StaticResource HintPill}">
-                        <TextBlock Text="Apply (Enter)" Foreground="White"
-                                   FontFamily="Segoe UI" FontSize="11"/>
-                    </Border>
-                    <Border Background="#444444" Style="{StaticResource HintPill}">
-                        <TextBlock Text="Cancel (Esc)" Foreground="#CCCCCC"
-                                   FontFamily="Segoe UI" FontSize="11"/>
-                    </Border>
+                           Margin="0,0,0,10"/>
+
+                <!-- Action buttons -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                    <Button x:Name="ApplyButton" Content="&#x2714; Apply (Enter)"
+                            Background="#6C63FF" Foreground="White"
+                            Style="{StaticResource ActionButton}" Click="OnApplyClick"/>
+                    <Button x:Name="CancelButton" Content="&#x2718; Cancel (Esc)"
+                            Background="#444444" Foreground="#CCCCCC"
+                            Style="{StaticResource ActionButton}" Click="OnCancelClick"/>
                 </StackPanel>
+
+                <!-- Mode selector row -->
+                <DockPanel Margin="0,4,0,0">
+                    <TextBlock Text="Mode:" Foreground="#888" FontSize="11"
+                               FontFamily="Segoe UI" VerticalAlignment="Center"
+                               Margin="0,0,6,0" DockPanel.Dock="Left"/>
+                    <ComboBox x:Name="ModeBox" Style="{StaticResource OverlayComboBox}"
+                              SelectionChanged="OnModeChanged"/>
+                </DockPanel>
+
                 <!-- Auto-apply countdown -->
                 <TextBlock x:Name="CountdownText" Foreground="#666666"
                            FontFamily="Segoe UI" FontSize="10" Margin="0,6,0,0"/>
             </StackPanel>
 
-            <!-- Error state: message + action hints -->
+            <!-- Error state: message + action buttons -->
             <StackPanel x:Name="ErrorPanel" Visibility="Collapsed">
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
                     <TextBlock Text="&#x26A0;" Foreground="#FBBF24"
@@ -98,14 +222,12 @@
                                TextWrapping="Wrap" MaxWidth="300"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal">
-                    <Border Background="#6C63FF" Style="{StaticResource HintPill}">
-                        <TextBlock Text="Retry (Enter)" Foreground="White"
-                                   FontFamily="Segoe UI" FontSize="11"/>
-                    </Border>
-                    <Border Background="#444444" Style="{StaticResource HintPill}">
-                        <TextBlock Text="Dismiss (Esc)" Foreground="#CCCCCC"
-                                   FontFamily="Segoe UI" FontSize="11"/>
-                    </Border>
+                    <Button Content="&#x21BB; Retry (Enter)"
+                            Background="#6C63FF" Foreground="White"
+                            Style="{StaticResource ActionButton}" Click="OnRetryClick"/>
+                    <Button Content="Dismiss (Esc)"
+                            Background="#444444" Foreground="#CCCCCC"
+                            Style="{StaticResource ActionButton}" Click="OnDismissClick"/>
                 </StackPanel>
             </StackPanel>
 

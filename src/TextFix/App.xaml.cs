@@ -126,9 +126,10 @@ public partial class App : Application
                 mi.Checked = (mi.Tag as string) == modeName;
         }
 
-        // Update tooltip
+        // Update tooltip and overlay mode
         if (_trayIcon is not null)
             _trayIcon.Text = $"TextFix — {modeName} ({_settings.Hotkey})";
+        _overlay?.SetActiveMode(modeName);
     }
 
     private void RefreshHistoryMenu()
@@ -167,12 +168,21 @@ public partial class App : Application
         _overlay.UserResponded += OnUserResponded;
         _overlay.RetryRequested += OnRetryRequested;
         _overlay.KeepOpenChanged += OnKeepOpenChanged;
+        _overlay.ModeChanged += OnOverlayModeChanged;
+        _overlay.SetActiveMode(_settings.ActiveModeName);
     }
 
     private async void OnKeepOpenChanged(bool keepOpen)
     {
         _settings.KeepOverlayOpen = keepOpen;
         await _settings.SaveAsync();
+    }
+
+    private async void OnOverlayModeChanged(string modeName)
+    {
+        _settings.ActiveModeName = modeName;
+        await _settings.SaveAsync();
+        SyncTrayState();
     }
 
     private async void OnRetryRequested()
@@ -299,12 +309,14 @@ public partial class App : Application
             if (_settings.KeepOverlayOpen)
                 _overlay?.ShowApplied();
             else
-                _overlay?.Hide();
+                _overlay?.FadeOutAndHide();
         }
         else
         {
             _correctionService.CancelAndRestore();
-            _overlay?.Hide();
+            // Don't call Hide() here — the overlay already fades itself out
+            // via OnCancelClick or OnKeyDown(Esc). Calling Hide() again after
+            // FadeOutAndHide() interrupts the animation and can break window state.
         }
     }
 
@@ -340,12 +352,15 @@ public partial class App : Application
 
         _trayIcon.Text = $"TextFix — {_settings.ActiveModeName} ({_settings.Hotkey})";
 
-        // Sync mode checkmarks
+        // Sync mode checkmarks in tray
         if (_trayIcon.ContextMenuStrip?.Items[0] is ToolStripMenuItem modeMenu)
         {
             foreach (ToolStripMenuItem mi in modeMenu.DropDownItems)
                 mi.Checked = (mi.Tag as string) == _settings.ActiveModeName;
         }
+
+        // Sync overlay mode selector
+        _overlay?.SetActiveMode(_settings.ActiveModeName);
     }
 
     protected override void OnExit(ExitEventArgs e)
