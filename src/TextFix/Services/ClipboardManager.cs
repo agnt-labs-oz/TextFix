@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using TextFix.Interop;
+using Clipboard = System.Windows.Clipboard;
 
 namespace TextFix.Services;
 

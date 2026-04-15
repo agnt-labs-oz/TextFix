@@ -4,6 +4,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using TextFix.Interop;
 using TextFix.Models;
+using KeyEventArgs = System.Windows.Input.KeyEventArgs;
 
 namespace TextFix.Views;
 
