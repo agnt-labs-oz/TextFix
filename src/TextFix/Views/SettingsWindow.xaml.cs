@@ -6,6 +6,7 @@ namespace TextFix.Views;
 public partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
+    private bool _keyVisible;
 
     public static readonly string[] KnownModels =
     [
@@ -26,25 +27,49 @@ public partial class SettingsWindow : Window
         HotkeyBox.Text = settings.Hotkey;
         AutoApplyBox.Text = settings.OverlayAutoApplySeconds.ToString();
 
-        // Populate model dropdown
         foreach (var model in KnownModels)
             ModelBox.Items.Add(model);
         ModelBox.SelectedItem = settings.Model;
+        // If current model isn't in the known list, add it
         if (ModelBox.SelectedItem is null)
         {
             ModelBox.Items.Add(settings.Model);
             ModelBox.SelectedItem = settings.Model;
         }
 
-        // Populate mode dropdown
         foreach (var mode in CorrectionMode.Defaults)
             ModeBox.Items.Add(mode.Name);
         ModeBox.SelectedItem = settings.ActiveModeName;
     }
 
+    private void OnToggleKeyVisibility(object sender, RoutedEventArgs e)
+    {
+        _keyVisible = !_keyVisible;
+        if (_keyVisible)
+        {
+            ApiKeyTextBox.Text = ApiKeyBox.Password;
+            ApiKeyBox.Visibility = Visibility.Collapsed;
+            ApiKeyTextBox.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            ApiKeyBox.Password = ApiKeyTextBox.Text;
+            ApiKeyTextBox.Visibility = Visibility.Collapsed;
+            ApiKeyBox.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void OnCopyKey(object sender, RoutedEventArgs e)
+    {
+        var key = _keyVisible ? ApiKeyTextBox.Text : ApiKeyBox.Password;
+        if (!string.IsNullOrEmpty(key))
+            System.Windows.Clipboard.SetText(key);
+    }
+
     private async void OnSave(object sender, RoutedEventArgs e)
     {
-        _settings.SetApiKey(ApiKeyBox.Password.Trim());
+        var apiKey = _keyVisible ? ApiKeyTextBox.Text.Trim() : ApiKeyBox.Password.Trim();
+        _settings.SetApiKey(apiKey);
         _settings.Hotkey = HotkeyBox.Text.Trim();
         _settings.Model = ModelBox.SelectedItem as string ?? _settings.Model;
         _settings.ActiveModeName = ModeBox.SelectedItem as string ?? _settings.ActiveModeName;
