@@ -166,6 +166,13 @@ public partial class App : Application
         _overlay = new OverlayWindow();
         _overlay.UserResponded += OnUserResponded;
         _overlay.RetryRequested += OnRetryRequested;
+        _overlay.KeepOpenChanged += OnKeepOpenChanged;
+    }
+
+    private async void OnKeepOpenChanged(bool keepOpen)
+    {
+        _settings.KeepOverlayOpen = keepOpen;
+        await _settings.SaveAsync();
     }
 
     private async void OnRetryRequested()

@@ -8,7 +8,8 @@
         ShowInTaskbar="False"
         ShowActivated="False"
         SizeToContent="WidthAndHeight"
-        ResizeMode="NoResize">
+        ResizeMode="NoResize"
+        x:Name="OverlayWin">
 
     <Window.Resources>
         <Style x:Key="PillBorder" TargetType="Border">
@@ -26,6 +27,18 @@
             <Setter Property="Padding" Value="4,2"/>
             <Setter Property="Margin" Value="0,0,8,0"/>
         </Style>
+        <Style x:Key="PinButton" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="ToolTip" Value="Pin overlay open"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+        <Storyboard x:Key="FadeOut">
+            <DoubleAnimation Storyboard.TargetName="OverlayWin"
+                             Storyboard.TargetProperty="Opacity"
+                             From="1" To="0" Duration="0:0:0.25"/>
+        </Storyboard>
     </Window.Resources>
 
     <Border x:Name="MainBorder" Style="{StaticResource PillBorder}" MaxWidth="400">
@@ -45,6 +58,9 @@
 
             <!-- Result state: diff + buttons -->
             <StackPanel x:Name="ResultPanel" Visibility="Collapsed">
+                <!-- Pin toggle -->
+                <TextBlock x:Name="PinToggle" Style="{StaticResource PinButton}"
+                           MouseLeftButtonDown="OnPinToggle"/>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                     <TextBlock x:Name="StatusIcon" Text="&#x2713;" Foreground="#4ADE80"
                                FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
@@ -81,7 +97,7 @@
                                FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"
                                TextWrapping="Wrap" MaxWidth="300"/>
                 </StackPanel>
-                <StackPanel x:Name="ErrorActions" Orientation="Horizontal">
+                <StackPanel Orientation="Horizontal">
                     <Border Background="#6C63FF" Style="{StaticResource HintPill}">
                         <TextBlock Text="Retry (Enter)" Foreground="White"
                                    FontFamily="Segoe UI" FontSize="11"/>
