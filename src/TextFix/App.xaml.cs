@@ -3,6 +3,7 @@ using System.IO;
 using System.Threading;
 using System.Windows;
 using System.Windows.Forms;
+using System.Windows.Interop;
 using TextFix.Models;
 using TextFix.Services;
 using TextFix.Views;
@@ -65,8 +66,8 @@ public partial class App : Application
             ShowInTaskbar = false,
             ShowActivated = false,
         };
-        _hiddenWindow.Show();
-        _hiddenWindow.Hide();
+        // Create the HWND without showing the window — needed for hotkey message pump
+        new WindowInteropHelper(_hiddenWindow).EnsureHandle();
     }
 
     private void SetupTrayIcon()
@@ -79,6 +80,7 @@ public partial class App : Application
             ContextMenuStrip = new ContextMenuStrip(),
         };
 
+        _trayIcon.ContextMenuStrip.Items.Add("Copy Last Correction", null, (_, _) => CopyLastCorrection());
         _trayIcon.ContextMenuStrip.Items.Add("Settings", null, (_, _) => OpenSettings());
         _trayIcon.ContextMenuStrip.Items.Add("-");
         _trayIcon.ContextMenuStrip.Items.Add("Exit", null, (_, _) => Shutdown());
@@ -92,11 +94,16 @@ public partial class App : Application
 
     private void RegisterHotkey()
     {
-        _hotkeyListener?.Dispose();
-        _hotkeyListener = new HotkeyListener();
-        _hotkeyListener.HotkeyPressed += OnHotkeyPressed;
-
         if (_hiddenWindow is null) return;
+
+        // Unregister old hotkey if listener already exists
+        _hotkeyListener?.Unregister();
+
+        if (_hotkeyListener is null)
+        {
+            _hotkeyListener = new HotkeyListener();
+            _hotkeyListener.HotkeyPressed += OnHotkeyPressed;
+        }
 
         if (!_hotkeyListener.Register(_hiddenWindow, _settings.Hotkey))
         {
@@ -163,6 +170,20 @@ public partial class App : Application
         else
         {
             _correctionService.CancelAndRestore();
+        }
+    }
+
+    private void CopyLastCorrection()
+    {
+        var text = _correctionService?.LastResult?.CorrectedText;
+        if (text is not null)
+        {
+            System.Windows.Clipboard.SetText(text);
+            _trayIcon?.ShowBalloonTip(2000, "TextFix", "Last correction copied to clipboard.", ToolTipIcon.Info);
+        }
+        else
+        {
+            _trayIcon?.ShowBalloonTip(2000, "TextFix", "No correction available yet.", ToolTipIcon.Info);
         }
     }
 

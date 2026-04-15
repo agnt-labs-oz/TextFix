@@ -29,6 +29,7 @@ public class CorrectionService
         _cts = new CancellationTokenSource();
 
         _focusTracker.CaptureSourceWindow();
+        _clipboard.SetSourceWindow(_focusTracker.SourceWindow);
 
         var selectedText = await _clipboard.CaptureSelectedTextAsync();
         if (selectedText is null)
