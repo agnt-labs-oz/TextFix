@@ -16,6 +16,7 @@ public partial class App : Application
 {
     private static Mutex? _mutex;
     private NotifyIcon? _trayIcon;
+    private ToolStripMenuItem? _historyMenu;
     private HotkeyListener? _hotkeyListener;
     private CorrectionService? _correctionService;
     private AiClient? _aiClient;
@@ -79,16 +80,85 @@ public partial class App : Application
     {
         _trayIcon = new NotifyIcon
         {
-            Text = $"TextFix ({_settings.Hotkey})",
+            Text = $"TextFix — {_settings.ActiveModeName} ({_settings.Hotkey})",
             Icon = SystemIcons.Application,
             Visible = true,
             ContextMenuStrip = new ContextMenuStrip(),
         };
 
+        // Mode submenu
+        var modeMenu = new ToolStripMenuItem("Mode");
+        foreach (var mode in CorrectionMode.Defaults)
+        {
+            var item = new ToolStripMenuItem(mode.Name)
+            {
+                Checked = mode.Name == _settings.ActiveModeName,
+                Tag = mode.Name,
+            };
+            item.Click += OnModeSelected;
+            modeMenu.DropDownItems.Add(item);
+        }
+        _trayIcon.ContextMenuStrip.Items.Add(modeMenu);
+
+        // History submenu
+        _historyMenu = new ToolStripMenuItem("History") { Enabled = false };
+        _trayIcon.ContextMenuStrip.Items.Add(_historyMenu);
+
         _trayIcon.ContextMenuStrip.Items.Add("Copy Last Correction", null, (_, _) => CopyLastCorrection());
         _trayIcon.ContextMenuStrip.Items.Add("Settings", null, (_, _) => OpenSettings());
         _trayIcon.ContextMenuStrip.Items.Add("-");
         _trayIcon.ContextMenuStrip.Items.Add("Exit", null, (_, _) => Shutdown());
+    }
+
+    private async void OnModeSelected(object? sender, EventArgs e)
+    {
+        if (sender is not ToolStripMenuItem item) return;
+        var modeName = item.Tag as string;
+        if (modeName is null) return;
+
+        _settings.ActiveModeName = modeName;
+        await _settings.SaveAsync();
+
+        // Update checkmarks
+        if (_trayIcon?.ContextMenuStrip?.Items[0] is ToolStripMenuItem modeMenu)
+        {
+            foreach (ToolStripMenuItem mi in modeMenu.DropDownItems)
+                mi.Checked = (mi.Tag as string) == modeName;
+        }
+
+        // Update tooltip
+        if (_trayIcon is not null)
+            _trayIcon.Text = $"TextFix — {modeName} ({_settings.Hotkey})";
+    }
+
+    private void RefreshHistoryMenu()
+    {
+        if (_historyMenu is null || _correctionService is null) return;
+
+        _historyMenu.DropDownItems.Clear();
+        var items = _correctionService.History.Items;
+
+        if (items.Count == 0)
+        {
+            _historyMenu.Enabled = false;
+            return;
+        }
+
+        _historyMenu.Enabled = true;
+        foreach (var result in items)
+        {
+            var label = result.CorrectedText.Length > 50
+                ? result.CorrectedText[..50] + "..."
+                : result.CorrectedText;
+            var menuItem = new ToolStripMenuItem(label);
+            var text = result.CorrectedText; // capture for closure
+            menuItem.Click += (_, _) =>
+            {
+                System.Windows.Clipboard.SetText(text);
+                _trayIcon?.ShowBalloonTip(1500, "TextFix", "Copied to clipboard.", ToolTipIcon.Info);
+            };
+            _historyMenu.DropDownItems.Add(menuItem);
+        }
     }
 
     private void SetupOverlay()
@@ -111,7 +181,11 @@ public partial class App : Application
             Dispatcher.Invoke(() => _overlay?.ShowProcessing());
 
         _correctionService.CorrectionCompleted += result =>
-            Dispatcher.Invoke(() => _overlay?.ShowResult(result, _settings.OverlayAutoApplySeconds));
+            Dispatcher.Invoke(() =>
+            {
+                _overlay?.ShowResult(result, _settings.OverlayAutoApplySeconds);
+                RefreshHistoryMenu();
+            });
 
         _correctionService.ErrorOccurred += msg =>
             Dispatcher.Invoke(() =>
@@ -222,7 +296,7 @@ public partial class App : Application
             RebuildServices();
             RegisterHotkey();
             if (_trayIcon is not null)
-                _trayIcon.Text = $"TextFix ({_settings.Hotkey})";
+                _trayIcon.Text = $"TextFix — {_settings.ActiveModeName} ({_settings.Hotkey})";
         }
     }
 
