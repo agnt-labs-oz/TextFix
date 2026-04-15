@@ -16,12 +16,12 @@ public partial class SettingsWindow : Window
         "claude-opus-4-6",
     ];
 
-    private static readonly (string Label, int Seconds)[] AfterCorrectionOptions =
+    private static readonly (string Label, int Seconds)[] AutoApplyOptions =
     [
-        ("Stay open (Enter to apply, Esc to cancel)", 0),
-        ("Auto-apply after 3s", 3),
-        ("Auto-apply after 5s", 5),
-        ("Auto-apply after 10s", 10),
+        ("Off (manual Enter/Esc)", 0),
+        ("3 seconds", 3),
+        ("5 seconds", 5),
+        ("10 seconds", 10),
     ];
 
     public bool SettingsChanged { get; private set; }
@@ -47,15 +47,16 @@ public partial class SettingsWindow : Window
             ModeBox.Items.Add(mode.Name);
         ModeBox.SelectedItem = settings.ActiveModeName;
 
-        // After correction behavior
         int selectedIndex = 0;
-        for (int i = 0; i < AfterCorrectionOptions.Length; i++)
+        for (int i = 0; i < AutoApplyOptions.Length; i++)
         {
-            AfterCorrectionBox.Items.Add(AfterCorrectionOptions[i].Label);
-            if (AfterCorrectionOptions[i].Seconds == settings.OverlayAutoApplySeconds)
+            AutoApplyBox.Items.Add(AutoApplyOptions[i].Label);
+            if (AutoApplyOptions[i].Seconds == settings.OverlayAutoApplySeconds)
                 selectedIndex = i;
         }
-        AfterCorrectionBox.SelectedIndex = selectedIndex;
+        AutoApplyBox.SelectedIndex = selectedIndex;
+
+        KeepOverlayOpenBox.IsChecked = settings.KeepOverlayOpen;
     }
 
     private void OnToggleKeyVisibility(object sender, RoutedEventArgs e)
@@ -90,9 +91,11 @@ public partial class SettingsWindow : Window
         _settings.Model = ModelBox.SelectedItem as string ?? _settings.Model;
         _settings.ActiveModeName = ModeBox.SelectedItem as string ?? _settings.ActiveModeName;
 
-        var afterIdx = AfterCorrectionBox.SelectedIndex;
-        if (afterIdx >= 0 && afterIdx < AfterCorrectionOptions.Length)
-            _settings.OverlayAutoApplySeconds = AfterCorrectionOptions[afterIdx].Seconds;
+        var idx = AutoApplyBox.SelectedIndex;
+        if (idx >= 0 && idx < AutoApplyOptions.Length)
+            _settings.OverlayAutoApplySeconds = AutoApplyOptions[idx].Seconds;
+
+        _settings.KeepOverlayOpen = KeepOverlayOpenBox.IsChecked == true;
 
         await _settings.SaveAsync();
         SettingsChanged = true;

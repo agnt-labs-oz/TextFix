@@ -80,6 +80,7 @@ public class AppSettingsTests : IDisposable
         original.Model = "claude-haiku-4-5-20251001";
         original.SystemPrompt = "Custom prompt";
         original.OverlayAutoApplySeconds = 5;
+        original.KeepOverlayOpen = true;
         original.StartWithWindows = true;
 
         var path = Path.Combine(_tempDir, "settings.json");
@@ -92,6 +93,7 @@ public class AppSettingsTests : IDisposable
         Assert.Equal(original.Model, loaded.Model);
         Assert.Equal(original.SystemPrompt, loaded.SystemPrompt);
         Assert.Equal(original.OverlayAutoApplySeconds, loaded.OverlayAutoApplySeconds);
+        Assert.Equal(original.KeepOverlayOpen, loaded.KeepOverlayOpen);
         Assert.Equal(original.StartWithWindows, loaded.StartWithWindows);
     }
 

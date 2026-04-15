@@ -31,6 +31,7 @@ public class AppSettings
         "Fix all typos, spelling, and grammar errors in the following text. Return only the corrected text with no explanation. Preserve the original meaning, tone, and formatting.";
 
     public int OverlayAutoApplySeconds { get; set; } = 3;
+    public bool KeepOverlayOpen { get; set; }
     public bool StartWithWindows { get; set; }
 
     public string ActiveModeName { get; set; } = "Fix errors";

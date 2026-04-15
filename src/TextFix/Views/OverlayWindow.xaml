@@ -93,12 +93,17 @@
                 </StackPanel>
             </StackPanel>
 
-            <!-- Info state: no changes, auto-close -->
-            <StackPanel x:Name="InfoPanel" Orientation="Horizontal" Visibility="Collapsed">
-                <TextBlock Text="&#x2713;" Foreground="#4ADE80"
-                           FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                <TextBlock x:Name="InfoText" Foreground="#E0E0E0"
-                           FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
+            <!-- Info state: no changes, focus lost, or applied confirmation -->
+            <StackPanel x:Name="InfoPanel" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock x:Name="InfoIcon" Text="&#x2713;" Foreground="#4ADE80"
+                               FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="InfoText" Foreground="#E0E0E0"
+                               FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock x:Name="InfoHint" Foreground="#666666"
+                           FontFamily="Segoe UI" FontSize="10" Margin="0,6,0,0"
+                           Visibility="Collapsed"/>
             </StackPanel>
         </StackPanel>
     </Border>

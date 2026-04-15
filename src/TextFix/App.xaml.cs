@@ -205,7 +205,7 @@ public partial class App : Application
         _correctionService.CorrectionCompleted += result =>
             Dispatcher.Invoke(() =>
             {
-                _overlay?.ShowResult(result, _settings.OverlayAutoApplySeconds);
+                _overlay?.ShowResult(result, _settings.OverlayAutoApplySeconds, _settings.KeepOverlayOpen);
                 RefreshHistoryMenu();
             });
 
@@ -288,10 +288,16 @@ public partial class App : Application
         if (apply && _correctionService.LastResult is not null)
         {
             await _correctionService.ApplyCorrectionAsync(_correctionService.LastResult);
+
+            if (_settings.KeepOverlayOpen)
+                _overlay?.ShowApplied();
+            else
+                _overlay?.Hide();
         }
         else
         {
             _correctionService.CancelAndRestore();
+            _overlay?.Hide();
         }
     }
 
