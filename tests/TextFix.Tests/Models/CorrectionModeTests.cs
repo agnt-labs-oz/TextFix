@@ -6,10 +6,10 @@ namespace TextFix.Tests.Models;
 public class CorrectionModeTests
 {
     [Fact]
-    public void Defaults_Contains5Modes()
+    public void Defaults_Contains6Modes()
     {
         var modes = CorrectionMode.Defaults;
-        Assert.Equal(5, modes.Count);
+        Assert.Equal(6, modes.Count);
     }
 
     [Fact]
@@ -39,5 +39,6 @@ public class CorrectionModeTests
         Assert.Contains("Concise", names);
         Assert.Contains("Friendly", names);
         Assert.Contains("Expand", names);
+        Assert.Contains("Prompt enhancer", names);
     }
 }

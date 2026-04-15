@@ -33,5 +33,10 @@ public record CorrectionMode
             Name = "Expand",
             SystemPrompt = "Expand the following text to be more detailed and descriptive while preserving the original meaning. Fix any errors. Return only the expanded text with no explanation.",
         },
+        new()
+        {
+            Name = "Prompt enhancer",
+            SystemPrompt = "You are an expert prompt engineer. Rewrite the following text as a clear, effective AI prompt. Improve specificity, add structure, clarify intent, and include any useful constraints or formatting instructions. Return only the enhanced prompt with no explanation.",
+        },
     ];
 }

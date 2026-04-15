@@ -24,6 +24,13 @@
             <Setter Property="Padding" Value="6,4"/>
             <Setter Property="Margin" Value="0,4,0,12"/>
         </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#2D2D3F"/>
+            <Setter Property="Foreground" Value="#E0E0E0"/>
+            <Setter Property="BorderBrush" Value="#444"/>
+            <Setter Property="Padding" Value="6,4"/>
+            <Setter Property="Margin" Value="0,4,0,12"/>
+        </Style>
         <Style TargetType="Label">
             <Setter Property="Foreground" Value="#AAAAAA"/>
             <Setter Property="Padding" Value="0"/>
@@ -34,6 +41,7 @@
 
     <Grid Margin="24">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -52,21 +60,26 @@
         </StackPanel>
 
         <StackPanel Grid.Row="2">
+            <Label Content="Model"/>
+            <ComboBox x:Name="ModelBox" IsEditable="False"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="3">
+            <Label Content="Mode"/>
+            <ComboBox x:Name="ModeBox" IsEditable="False"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="4">
             <Label Content="Hotkey (e.g., Ctrl+Shift+C)"/>
             <TextBox x:Name="HotkeyBox"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="3">
+        <StackPanel Grid.Row="5">
             <Label Content="Auto-apply delay (seconds, 0 = never)"/>
             <TextBox x:Name="AutoApplyBox"/>
         </StackPanel>
 
-        <StackPanel Grid.Row="4">
-            <Label Content="Model"/>
-            <TextBox x:Name="ModelBox"/>
-        </StackPanel>
-
-        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="SaveButton" Content="Save" Width="80" Height="30"
                     Background="#6C63FF" Foreground="White" BorderBrush="Transparent"
                     FontSize="13" Cursor="Hand" Click="OnSave" Margin="0,0,8,0"/>

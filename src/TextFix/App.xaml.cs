@@ -295,8 +295,21 @@ public partial class App : Application
         {
             RebuildServices();
             RegisterHotkey();
-            if (_trayIcon is not null)
-                _trayIcon.Text = $"TextFix — {_settings.ActiveModeName} ({_settings.Hotkey})";
+            SyncTrayState();
+        }
+    }
+
+    private void SyncTrayState()
+    {
+        if (_trayIcon is null) return;
+
+        _trayIcon.Text = $"TextFix — {_settings.ActiveModeName} ({_settings.Hotkey})";
+
+        // Sync mode checkmarks
+        if (_trayIcon.ContextMenuStrip?.Items[0] is ToolStripMenuItem modeMenu)
+        {
+            foreach (ToolStripMenuItem mi in modeMenu.DropDownItems)
+                mi.Checked = (mi.Tag as string) == _settings.ActiveModeName;
         }
     }
 
