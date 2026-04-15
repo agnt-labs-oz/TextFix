@@ -25,7 +25,7 @@ public class AiClient
         };
     }
 
-    public async Task<CorrectionResult> CorrectAsync(string text, CancellationToken ct = default)
+    public async Task<CorrectionResult> CorrectAsync(string text, string systemPrompt, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(text))
             return CorrectionResult.Error(text, "Text is empty.");
@@ -39,7 +39,7 @@ public class AiClient
             {
                 Model = _settings.Model,
                 MaxTokens = 4096,
-                System = _settings.SystemPrompt,
+                System = systemPrompt,
                 Messages =
                 [
                     new MessageParam { Role = Role.User, Content = text },

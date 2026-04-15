@@ -105,7 +105,7 @@ public partial class App : Application
         if (!string.IsNullOrWhiteSpace(_settings.GetApiKey()))
             _aiClient = new AiClient(_settings);
 
-        _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!);
+        _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!, _settings);
 
         _correctionService.ProcessingStarted += () =>
             Dispatcher.Invoke(() => _overlay?.ShowProcessing());

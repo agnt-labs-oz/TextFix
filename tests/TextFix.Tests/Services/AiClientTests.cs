@@ -30,7 +30,7 @@ public class AiClientTests
         var settings = new AppSettings { ApiKey = "sk-ant-test-key" };
         var client = new AiClient(settings);
 
-        var result = await client.CorrectAsync("");
+        var result = await client.CorrectAsync("", "Fix grammar.");
 
         Assert.True(result.IsError);
         Assert.Contains("empty", result.ErrorMessage!, StringComparison.OrdinalIgnoreCase);
@@ -43,7 +43,7 @@ public class AiClientTests
         var client = new AiClient(settings);
         var longText = new string('a', 5001);
 
-        var result = await client.CorrectAsync(longText);
+        var result = await client.CorrectAsync(longText, "Fix grammar.");
 
         Assert.True(result.IsError);
         Assert.Contains("too long", result.ErrorMessage!, StringComparison.OrdinalIgnoreCase);
