@@ -4,42 +4,50 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TextFix is a Windows desktop application that lets users quickly correct and improve typed text using AI. The core workflow: user types text in any app (Teams, editors, console, etc.), selects it, triggers TextFix via hotkey, and the app grabs the selected text, sends it to an AI service for correction, and replaces the original text with the corrected version.
-
-### Core Use Cases
-- Fix typos and misspellings from fast typing
-- Correct grammar and punctuation
-- Optionally expand/rewrite text in various styles
+TextFix is a Windows desktop application that lets users quickly correct and improve typed text using AI. The core workflow: user types text in any app (Teams, editors, console, etc.), selects it, triggers TextFix via hotkey (default Ctrl+Shift+C), and the app grabs the selected text, sends it to Claude for correction, and replaces the original text with the corrected version.
 
 ### Feature Tiers
-- **MVP**: Hotkey-triggered select-correct-replace workflow
-- **Future**: Real-time auto-correction as the user types (system-wide input hook, much harder — latency management, conflict avoidance with target app input handling)
-
-### Key Technical Requirements
-- System-wide global hotkey to trigger correction from any application
-- Clipboard integration: copy selected text, process it, paste corrected text back
-- AI API integration for text correction (e.g., Claude API, OpenAI)
-- Minimal UI — speed is the priority; the app should feel invisible
+- **MVP (current)**: Hotkey-triggered select-correct-replace workflow with floating overlay
+- **Future**: Preset correction modes, multiple AI providers, real-time auto-correction
 
 ## Tech Stack
 
-- **.NET** (WPF or WinForms) targeting Windows
-- **C#** as primary language
-- AI provider SDK (Anthropic/OpenAI) for text processing
+- **.NET 10** with WPF + WinForms (for NotifyIcon), targeting `net10.0-windows`
+- **C#** with `AllowUnsafeBlocks` (required for LibraryImport source-generated P/Invoke)
+- **Anthropic C# SDK** (`Anthropic` NuGet v12.x) — uses `ContentBlock` union type with `TryPickText()`, not `OfType<TextBlock>()`
+- Win32 P/Invoke via `LibraryImport` (not `DllImport`)
 
 ## Architecture
 
-- **Hotkey listener**: Global keyboard hook (Win32 `RegisterHotKey` or low-level keyboard hook) to trigger correction from any app
-- **Clipboard manager**: Simulates Ctrl+C to capture selected text, then Ctrl+V to paste corrected text back
-- **AI client**: Sends text to AI API with a system prompt tuned for correction, returns cleaned text
-- **Settings/config**: User-configurable hotkey, AI provider, API key, correction style preferences
-- **System tray**: App runs in the system tray with minimal footprint
+```
+App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle)
+├── Services/HotkeyListener.cs    — Win32 RegisterHotKey, parses "Ctrl+Shift+C" format
+├── Services/CorrectionService.cs — Pipeline orchestrator (capture → AI → paste)
+│   ├── Services/ClipboardManager.cs — SendInput Ctrl+C/V, clipboard save/restore
+│   ├── Services/FocusTracker.cs     — GetForegroundWindow, IsWindow, IsIconic
+│   └── Services/AiClient.cs        — AnthropicClient wrapper, error handling
+├── Views/OverlayWindow.xaml       — Floating overlay (processing → diff → error states)
+├── Views/SettingsWindow.xaml      — API key (PasswordBox), hotkey, model config
+├── Models/AppSettings.cs          — JSON persistence, DPAPI-encrypted API key
+├── Models/CorrectionResult.cs     — Result record with Error() factory
+└── Interop/NativeMethods.cs       — All Win32 declarations
+```
+
+### Key Design Decisions
+- **INPUTUNION must have `Size = 32`** in StructLayout — matches MOUSEINPUT on x64. Without this, SendInput returns ERROR_INVALID_PARAMETER (87). This was the hardest bug to find.
+- **MapVirtualKey needs `EntryPoint = "MapVirtualKeyW"`** — LibraryImport requires exact DLL export names
+- **WaitForModifierKeysReleased** polls `GetAsyncKeyState` before simulating Ctrl+C — physical hotkey keys interfere with SendInput
+- **SetForegroundWindow** restores focus to source app before Ctrl+C — hotkey processing can shift focus
+- **API key encrypted with DPAPI** (`ProtectedData.Protect`, `DataProtectionScope.CurrentUser`)
+- Services created once at startup, not per hotkey press (prevents HttpClient socket exhaustion)
+- `ShutdownMode="OnExplicitShutdown"`, no StartupUri — app runs from system tray
+- Named Mutex for single-instance enforcement
 
 ## Build & Run
 
 ```bash
 dotnet build
-dotnet run
+dotnet run --project src/TextFix/TextFix.csproj
 ```
 
 ## Testing
@@ -47,3 +55,20 @@ dotnet run
 ```bash
 dotnet test
 ```
+
+10 tests: 6 AppSettings (including DPAPI migration), 4 AiClient.
+
+## Releasing
+
+Push a version tag to trigger a GitHub Actions build that publishes a self-contained single-file exe:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+This creates a GitHub Release with `TextFix-v0.1.0-win-x64.zip` attached.
+
+## Settings
+
+Stored at `%APPDATA%/TextFix/settings.json`. API key is DPAPI-encrypted; legacy plaintext keys are auto-migrated on load.
