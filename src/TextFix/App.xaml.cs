@@ -81,7 +81,7 @@ public partial class App : Application
         _trayIcon = new NotifyIcon
         {
             Text = $"TextFix — {_settings.ActiveModeName} ({_settings.Hotkey})",
-            Icon = SystemIcons.Application,
+            Icon = Icon.ExtractAssociatedIcon(Environment.ProcessPath!)!,
             Visible = true,
             ContextMenuStrip = new ContextMenuStrip(),
         };
