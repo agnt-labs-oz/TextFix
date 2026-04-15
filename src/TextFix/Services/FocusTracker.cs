@@ -25,5 +25,11 @@ public class FocusTracker
         return NativeMethods.GetForegroundWindow() == _sourceWindow;
     }
 
+    public void RestoreFocus()
+    {
+        if (_sourceWindow != IntPtr.Zero && NativeMethods.IsWindow(_sourceWindow))
+            NativeMethods.SetForegroundWindow(_sourceWindow);
+    }
+
     public IntPtr SourceWindow => _sourceWindow;
 }

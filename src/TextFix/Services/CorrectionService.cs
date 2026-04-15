@@ -65,6 +65,10 @@ public class CorrectionService
             return;
         }
 
+        // Restore focus to the source window — the overlay steals it for keyboard input
+        _focusTracker.RestoreFocus();
+        await Task.Delay(50);
+
         if (_focusTracker.IsSourceWindowStillActive())
         {
             await _clipboard.PasteTextAsync(result.CorrectedText);
