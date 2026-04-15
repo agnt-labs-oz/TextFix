@@ -1,3 +1,4 @@
+using System.Net.Http;
 using Anthropic;
 using Anthropic.Exceptions;
 using Anthropic.Models.Messages;
@@ -62,9 +63,14 @@ public class AiClient
                 CorrectedText = corrected.Trim(),
             };
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             return CorrectionResult.Error(text, "Correction cancelled.");
+        }
+        catch (OperationCanceledException)
+        {
+            // HttpClient timeout throws TaskCanceledException (subclass of OperationCanceledException)
+            return CorrectionResult.Error(text, "Request timed out — check your connection.");
         }
         catch (AnthropicUnauthorizedException)
         {
@@ -80,7 +86,11 @@ public class AiClient
         }
         catch (AnthropicIOException)
         {
-            return CorrectionResult.Error(text, "Network error — check your internet connection.");
+            return CorrectionResult.Error(text, "Network error — check your connection.");
+        }
+        catch (HttpRequestException)
+        {
+            return CorrectionResult.Error(text, "Cannot reach API — check your connection.");
         }
         catch (Exception ex)
         {

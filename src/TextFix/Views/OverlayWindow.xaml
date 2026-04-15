@@ -21,6 +21,11 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="HintPill" TargetType="Border">
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+        </Style>
     </Window.Resources>
 
     <Border x:Name="MainBorder" Style="{StaticResource PillBorder}" MaxWidth="400">
@@ -53,11 +58,11 @@
                            FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
                            Margin="0,0,0,12"/>
                 <StackPanel Orientation="Horizontal">
-                    <Border Background="#6C63FF" CornerRadius="4" Padding="4,2" Margin="0,0,8,0">
+                    <Border Background="#6C63FF" Style="{StaticResource HintPill}">
                         <TextBlock Text="Apply (Enter)" Foreground="White"
                                    FontFamily="Segoe UI" FontSize="11"/>
                     </Border>
-                    <Border Background="#444444" CornerRadius="4" Padding="4,2">
+                    <Border Background="#444444" Style="{StaticResource HintPill}">
                         <TextBlock Text="Cancel (Esc)" Foreground="#CCCCCC"
                                    FontFamily="Segoe UI" FontSize="11"/>
                     </Border>
@@ -67,13 +72,33 @@
                            FontFamily="Segoe UI" FontSize="10" Margin="0,6,0,0"/>
             </StackPanel>
 
-            <!-- Error state -->
-            <StackPanel x:Name="ErrorPanel" Orientation="Horizontal" Visibility="Collapsed">
-                <TextBlock Text="&#x26A0;" Foreground="#FBBF24"
+            <!-- Error state: message + action hints -->
+            <StackPanel x:Name="ErrorPanel" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <TextBlock Text="&#x26A0;" Foreground="#FBBF24"
+                               FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="ErrorText" Foreground="#E0E0E0"
+                               FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"
+                               TextWrapping="Wrap" MaxWidth="300"/>
+                </StackPanel>
+                <StackPanel x:Name="ErrorActions" Orientation="Horizontal">
+                    <Border Background="#6C63FF" Style="{StaticResource HintPill}">
+                        <TextBlock Text="Retry (Enter)" Foreground="White"
+                                   FontFamily="Segoe UI" FontSize="11"/>
+                    </Border>
+                    <Border Background="#444444" Style="{StaticResource HintPill}">
+                        <TextBlock Text="Dismiss (Esc)" Foreground="#CCCCCC"
+                                   FontFamily="Segoe UI" FontSize="11"/>
+                    </Border>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Info state: no changes, auto-close -->
+            <StackPanel x:Name="InfoPanel" Orientation="Horizontal" Visibility="Collapsed">
+                <TextBlock Text="&#x2713;" Foreground="#4ADE80"
                            FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                <TextBlock x:Name="ErrorText" Foreground="#E0E0E0"
-                           FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"
-                           TextWrapping="Wrap" MaxWidth="300"/>
+                <TextBlock x:Name="InfoText" Foreground="#E0E0E0"
+                           FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
             </StackPanel>
         </StackPanel>
     </Border>

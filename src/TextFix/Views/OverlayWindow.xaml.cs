@@ -1,6 +1,5 @@
 using System.Windows;
 using System.Windows.Input;
-using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using TextFix.Interop;
 using TextFix.Models;
@@ -14,8 +13,10 @@ public partial class OverlayWindow : Window
     private DispatcherTimer? _spinnerTimer;
     private int _countdownSeconds;
     private CorrectionResult? _currentResult;
+    private bool _showingError;
 
     public event Action<bool>? UserResponded; // true = apply, false = cancel
+    public event Action? RetryRequested;
 
     public OverlayWindow()
     {
@@ -25,10 +26,12 @@ public partial class OverlayWindow : Window
 
     public void ShowProcessing()
     {
+        _showingError = false;
         StopAutoApply();
         ProcessingPanel.Visibility = Visibility.Visible;
         ResultPanel.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
+        InfoPanel.Visibility = Visibility.Collapsed;
 
         PositionNearCursor();
         StartSpinnerAnimation();
@@ -43,29 +46,37 @@ public partial class OverlayWindow : Window
 
         if (result.IsError)
         {
+            _showingError = true;
             ProcessingPanel.Visibility = Visibility.Collapsed;
             ResultPanel.Visibility = Visibility.Collapsed;
+            InfoPanel.Visibility = Visibility.Collapsed;
             ErrorPanel.Visibility = Visibility.Visible;
             ErrorText.Text = result.ErrorMessage;
 
-            StartAutoClose(3);
+            // Errors stay until dismissed — take focus for keyboard
+            Activate();
+            Focus();
             return;
         }
 
         if (!result.HasChanges)
         {
+            _showingError = false;
             ProcessingPanel.Visibility = Visibility.Collapsed;
             ResultPanel.Visibility = Visibility.Collapsed;
-            ErrorPanel.Visibility = Visibility.Visible;
-            ErrorText.Text = "No corrections needed.";
+            ErrorPanel.Visibility = Visibility.Collapsed;
+            InfoPanel.Visibility = Visibility.Visible;
+            InfoText.Text = "No corrections needed.";
 
             StartAutoClose(2);
             return;
         }
 
+        _showingError = false;
         ProcessingPanel.Visibility = Visibility.Collapsed;
         ResultPanel.Visibility = Visibility.Visible;
         ErrorPanel.Visibility = Visibility.Collapsed;
+        InfoPanel.Visibility = Visibility.Collapsed;
 
         var changeCount = CountChanges(result.OriginalText, result.CorrectedText);
         StatusText.Text = $"Fixed {changeCount} error{(changeCount == 1 ? "" : "s")}";
@@ -82,10 +93,12 @@ public partial class OverlayWindow : Window
 
     public void ShowFocusLost()
     {
+        _showingError = false;
         ProcessingPanel.Visibility = Visibility.Collapsed;
         ResultPanel.Visibility = Visibility.Collapsed;
-        ErrorPanel.Visibility = Visibility.Visible;
-        ErrorText.Text = "Focus changed — Ctrl+V to paste";
+        ErrorPanel.Visibility = Visibility.Collapsed;
+        InfoPanel.Visibility = Visibility.Visible;
+        InfoText.Text = "Focus changed — Ctrl+V to paste";
 
         StartAutoClose(3);
     }
@@ -113,14 +126,29 @@ public partial class OverlayWindow : Window
         if (e.Key == Key.Enter || e.Key == Key.Return)
         {
             StopAutoApply();
-            UserResponded?.Invoke(true);
-            Hide();
+            if (_showingError)
+            {
+                Hide();
+                RetryRequested?.Invoke();
+            }
+            else
+            {
+                UserResponded?.Invoke(true);
+                Hide();
+            }
         }
         else if (e.Key == Key.Escape)
         {
             StopAutoApply();
-            UserResponded?.Invoke(false);
-            Hide();
+            if (_showingError)
+            {
+                Hide();
+            }
+            else
+            {
+                UserResponded?.Invoke(false);
+                Hide();
+            }
         }
     }
 

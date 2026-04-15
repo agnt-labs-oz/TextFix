@@ -165,6 +165,28 @@ public partial class App : Application
     {
         _overlay = new OverlayWindow();
         _overlay.UserResponded += OnUserResponded;
+        _overlay.RetryRequested += OnRetryRequested;
+    }
+
+    private async void OnRetryRequested()
+    {
+        if (_isBusy) return;
+        _isBusy = true;
+
+        try
+        {
+            await _correctionService!.TriggerCorrectionAsync();
+        }
+        catch (Exception ex)
+        {
+            LogError(ex);
+            _overlay?.ShowProcessing();
+            _overlay?.ShowResult(CorrectionResult.Error("", $"Error: {ex.Message}"), 0);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
     }
 
     private void SetupServices()
