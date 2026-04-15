@@ -1,0 +1,81 @@
+<Window x:Class="TextFix.Views.OverlayWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Focusable="False"
+        SizeToContent="WidthAndHeight"
+        ResizeMode="NoResize">
+
+    <Window.Resources>
+        <Style x:Key="PillBorder" TargetType="Border">
+            <Setter Property="Background" Value="#E61A1A2E"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Effect">
+                <Setter.Value>
+                    <DropShadowEffect BlurRadius="20" Opacity="0.4" ShadowDepth="4"/>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Border x:Name="MainBorder" Style="{StaticResource PillBorder}" MaxWidth="400">
+        <StackPanel>
+            <!-- Processing state: spinner + "Correcting..." -->
+            <StackPanel x:Name="ProcessingPanel" Orientation="Horizontal" Visibility="Visible">
+                <Ellipse x:Name="Spinner" Width="18" Height="18"
+                         Stroke="#6C63FF" StrokeThickness="2"
+                         StrokeDashArray="3 2" Margin="0,0,12,0">
+                    <Ellipse.RenderTransform>
+                        <RotateTransform CenterX="9" CenterY="9"/>
+                    </Ellipse.RenderTransform>
+                </Ellipse>
+                <TextBlock Text="Correcting..." Foreground="#E0E0E0"
+                           FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
+            </StackPanel>
+
+            <!-- Result state: diff + buttons -->
+            <StackPanel x:Name="ResultPanel" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                    <TextBlock x:Name="StatusIcon" Text="&#x2713;" Foreground="#4ADE80"
+                               FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock x:Name="StatusText" Text="" Foreground="#E0E0E0"
+                               FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock x:Name="OriginalText" Foreground="#AAAAAA"
+                           FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
+                           TextDecorations="Strikethrough" Margin="0,0,0,4"/>
+                <TextBlock x:Name="CorrectedText" Foreground="#E0E0E0"
+                           FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
+                           Margin="0,0,0,12"/>
+                <StackPanel Orientation="Horizontal">
+                    <Border Background="#6C63FF" CornerRadius="4" Padding="4,2" Margin="0,0,8,0">
+                        <TextBlock Text="Apply (Enter)" Foreground="White"
+                                   FontFamily="Segoe UI" FontSize="11"/>
+                    </Border>
+                    <Border Background="#444444" CornerRadius="4" Padding="4,2">
+                        <TextBlock Text="Cancel (Esc)" Foreground="#CCCCCC"
+                                   FontFamily="Segoe UI" FontSize="11"/>
+                    </Border>
+                </StackPanel>
+                <!-- Auto-apply countdown -->
+                <TextBlock x:Name="CountdownText" Foreground="#666666"
+                           FontFamily="Segoe UI" FontSize="10" Margin="0,6,0,0"/>
+            </StackPanel>
+
+            <!-- Error state -->
+            <StackPanel x:Name="ErrorPanel" Orientation="Horizontal" Visibility="Collapsed">
+                <TextBlock Text="&#x26A0;" Foreground="#FBBF24"
+                           FontSize="16" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                <TextBlock x:Name="ErrorText" Foreground="#E0E0E0"
+                           FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"
+                           TextWrapping="Wrap" MaxWidth="300"/>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>
