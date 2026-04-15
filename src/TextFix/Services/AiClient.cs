@@ -13,13 +13,14 @@ public class AiClient
 
     public AiClient(AppSettings settings)
     {
-        if (string.IsNullOrWhiteSpace(settings.ApiKey))
+        var apiKey = settings.GetApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("API key is not configured. Set your API key in Settings.");
 
         _settings = settings;
         _client = new AnthropicClient
         {
-            ApiKey = settings.ApiKey,
+            ApiKey = apiKey,
             Timeout = TimeSpan.FromSeconds(10),
         };
     }

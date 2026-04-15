@@ -82,9 +82,9 @@ internal static partial class NativeMethods
         public INPUTUNION U;
     }
 
-    // The union must be sized to the largest member (MOUSEINPUT).
-    // On x64: MOUSEINPUT is 32 bytes (4+4+4+4+4+padding+8).
-    // KEYBDINPUT is only 16 bytes. Pad to 40 bytes to match MOUSEINPUT size.
+    // The union must be sized to the largest member (MOUSEINPUT = 32 bytes on x64).
+    // Without explicit sizing, the union defaults to KEYBDINPUT's 16 bytes,
+    // causing SendInput to reject the struct with ERROR_INVALID_PARAMETER.
     [StructLayout(LayoutKind.Explicit, Size = 32)]
     public struct INPUTUNION
     {

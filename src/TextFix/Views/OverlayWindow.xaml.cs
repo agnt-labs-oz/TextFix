@@ -25,6 +25,7 @@ public partial class OverlayWindow : Window
 
     public void ShowProcessing()
     {
+        StopAutoApply();
         ProcessingPanel.Visibility = Visibility.Visible;
         ResultPanel.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
@@ -38,6 +39,7 @@ public partial class OverlayWindow : Window
     {
         _currentResult = result;
         StopSpinnerAnimation();
+        StopAutoApply();
 
         if (result.IsError)
         {
@@ -70,6 +72,10 @@ public partial class OverlayWindow : Window
         OriginalText.Text = result.OriginalText;
         CorrectedText.Text = result.CorrectedText;
 
+        // Take focus so Enter/Escape work
+        Activate();
+        Focus();
+
         if (autoApplySeconds > 0)
             StartAutoApplyCountdown(autoApplySeconds);
     }
@@ -92,8 +98,9 @@ public partial class OverlayWindow : Window
             Left = point.X + 10;
             Top = point.Y + 20;
 
-            // Clamp to screen bounds
-            var screen = SystemParameters.WorkArea;
+            // Get the screen containing the cursor (multi-monitor aware)
+            var cursorPoint = new System.Drawing.Point(point.X, point.Y);
+            var screen = System.Windows.Forms.Screen.FromPoint(cursorPoint).WorkingArea;
             if (Left + ActualWidth > screen.Right)
                 Left = screen.Right - ActualWidth - 10;
             if (Top + ActualHeight > screen.Bottom)

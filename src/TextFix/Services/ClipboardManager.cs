@@ -72,6 +72,7 @@ public class ClipboardManager
         return newText;
     }
 
+    [System.Diagnostics.Conditional("DEBUG")]
     private static void Log(string message)
     {
         try

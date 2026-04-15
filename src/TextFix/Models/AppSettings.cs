@@ -1,4 +1,6 @@
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -12,7 +14,16 @@ public class AppSettings
         PropertyNameCaseInsensitive = true,
     };
 
+    /// <summary>
+    /// Encrypted API key (base64-encoded DPAPI blob). Use GetApiKey/SetApiKey for plaintext access.
+    /// </summary>
+    public string EncryptedApiKey { get; set; } = "";
+
+    /// <summary>
+    /// Legacy plaintext key — read during migration, never written.
+    /// </summary>
     public string ApiKey { get; set; } = "";
+
     public string Hotkey { get; set; } = "Ctrl+Shift+C";
     public string Model { get; set; } = "claude-haiku-4-5-20251001";
 
@@ -28,6 +39,50 @@ public class AppSettings
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "TextFix",
             "settings.json");
+
+    public string GetApiKey()
+    {
+        // Prefer encrypted key
+        if (!string.IsNullOrEmpty(EncryptedApiKey))
+        {
+            try
+            {
+                var encrypted = Convert.FromBase64String(EncryptedApiKey);
+                var plain = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString(plain);
+            }
+            catch
+            {
+                return "";
+            }
+        }
+
+        // Fall back to legacy plaintext key (migration)
+        return ApiKey;
+    }
+
+    public void SetApiKey(string plainKey)
+    {
+        if (string.IsNullOrEmpty(plainKey))
+        {
+            EncryptedApiKey = "";
+            ApiKey = "";
+            return;
+        }
+
+        try
+        {
+            var plain = Encoding.UTF8.GetBytes(plainKey);
+            var encrypted = ProtectedData.Protect(plain, null, DataProtectionScope.CurrentUser);
+            EncryptedApiKey = Convert.ToBase64String(encrypted);
+            ApiKey = ""; // Clear legacy plaintext
+        }
+        catch
+        {
+            // Fallback: store plaintext if DPAPI fails (shouldn't happen on Windows)
+            ApiKey = plainKey;
+        }
+    }
 
     public async Task SaveAsync(string? path = null)
     {
@@ -49,7 +104,16 @@ public class AppSettings
         try
         {
             var json = await File.ReadAllTextAsync(path);
-            return JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+            var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+
+            // Migrate plaintext key to encrypted
+            if (!string.IsNullOrEmpty(settings.ApiKey) && string.IsNullOrEmpty(settings.EncryptedApiKey))
+            {
+                settings.SetApiKey(settings.ApiKey);
+                await settings.SaveAsync(path);
+            }
+
+            return settings;
         }
         catch
         {

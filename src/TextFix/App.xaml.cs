@@ -18,8 +18,12 @@ public partial class App : Application
     private NotifyIcon? _trayIcon;
     private HotkeyListener? _hotkeyListener;
     private CorrectionService? _correctionService;
+    private AiClient? _aiClient;
+    private ClipboardManager? _clipboardManager;
+    private FocusTracker? _focusTracker;
     private OverlayWindow? _overlay;
     private AppSettings _settings = new();
+    private bool _isBusy;
 
     // Hidden window needed for hotkey message pump
     private Window? _hiddenWindow;
@@ -50,10 +54,11 @@ public partial class App : Application
         CreateHiddenWindow();
         SetupTrayIcon();
         SetupOverlay();
+        SetupServices();
         RegisterHotkey();
 
         // Prompt for API key on first run
-        if (string.IsNullOrWhiteSpace(_settings.ApiKey))
+        if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
             OpenSettings();
     }
 
@@ -92,6 +97,41 @@ public partial class App : Application
         _overlay.UserResponded += OnUserResponded;
     }
 
+    private void SetupServices()
+    {
+        _clipboardManager = new ClipboardManager();
+        _focusTracker = new FocusTracker();
+
+        if (!string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+            _aiClient = new AiClient(_settings);
+
+        _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!);
+
+        _correctionService.ProcessingStarted += () =>
+            Dispatcher.Invoke(() => _overlay?.ShowProcessing());
+
+        _correctionService.CorrectionCompleted += result =>
+            Dispatcher.Invoke(() => _overlay?.ShowResult(result, _settings.OverlayAutoApplySeconds));
+
+        _correctionService.ErrorOccurred += msg =>
+            Dispatcher.Invoke(() =>
+            {
+                _overlay?.ShowProcessing();
+                _overlay?.ShowResult(CorrectionResult.Error("", msg), 0);
+            });
+
+        _correctionService.FocusLost += () =>
+            Dispatcher.Invoke(() => _overlay?.ShowFocusLost());
+    }
+
+    private void RebuildServices()
+    {
+        _aiClient = !string.IsNullOrWhiteSpace(_settings.GetApiKey())
+            ? new AiClient(_settings)
+            : null;
+        _correctionService?.UpdateAiClient(_aiClient!);
+    }
+
     private void RegisterHotkey()
     {
         if (_hiddenWindow is null) return;
@@ -117,45 +157,31 @@ public partial class App : Application
 
     private async void OnHotkeyPressed()
     {
-        if (string.IsNullOrWhiteSpace(_settings.ApiKey))
-        {
-            _overlay?.ShowProcessing();
-            _overlay?.ShowResult(
-                CorrectionResult.Error("", "Set up your API key in Settings."),
-                0);
-            return;
-        }
+        if (_isBusy) return;
+        _isBusy = true;
 
         try
         {
-            var aiClient = new AiClient(_settings);
-            var clipboard = new ClipboardManager();
-            var focusTracker = new FocusTracker();
-            _correctionService = new CorrectionService(clipboard, focusTracker, aiClient);
+            if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+            {
+                _overlay?.ShowProcessing();
+                _overlay?.ShowResult(
+                    CorrectionResult.Error("", "Set up your API key in Settings."),
+                    0);
+                return;
+            }
 
-            _correctionService.ProcessingStarted += () =>
-                Dispatcher.Invoke(() => _overlay?.ShowProcessing());
-
-            _correctionService.CorrectionCompleted += result =>
-                Dispatcher.Invoke(() => _overlay?.ShowResult(result, _settings.OverlayAutoApplySeconds));
-
-            _correctionService.ErrorOccurred += msg =>
-                Dispatcher.Invoke(() =>
-                {
-                    _overlay?.ShowProcessing();
-                    _overlay?.ShowResult(CorrectionResult.Error("", msg), 0);
-                });
-
-            _correctionService.FocusLost += () =>
-                Dispatcher.Invoke(() => _overlay?.ShowFocusLost());
-
-            await _correctionService.TriggerCorrectionAsync();
+            await _correctionService!.TriggerCorrectionAsync();
         }
         catch (Exception ex)
         {
             LogError(ex);
             _overlay?.ShowProcessing();
             _overlay?.ShowResult(CorrectionResult.Error("", $"Error: {ex.Message}"), 0);
+        }
+        finally
+        {
+            _isBusy = false;
         }
     }
 
@@ -193,6 +219,7 @@ public partial class App : Application
         window.ShowDialog();
         if (window.SettingsChanged)
         {
+            RebuildServices();
             RegisterHotkey();
             if (_trayIcon is not null)
                 _trayIcon.Text = $"TextFix ({_settings.Hotkey})";
@@ -203,6 +230,7 @@ public partial class App : Application
     {
         _hotkeyListener?.Dispose();
         _trayIcon?.Dispose();
+        _hiddenWindow?.Close();
         _mutex?.Dispose();
         base.OnExit(e);
     }

@@ -1,5 +1,4 @@
 using System.IO;
-using System.Text.Json;
 using TextFix.Models;
 
 namespace TextFix.Tests.Models;
@@ -25,7 +24,7 @@ public class AppSettingsTests : IDisposable
     {
         var settings = new AppSettings();
 
-        Assert.Equal("", settings.ApiKey);
+        Assert.Equal("", settings.GetApiKey());
         Assert.Equal("Ctrl+Shift+C", settings.Hotkey);
         Assert.Equal("claude-haiku-4-5-20251001", settings.Model);
         Assert.Equal(3, settings.OverlayAutoApplySeconds);
@@ -38,16 +37,16 @@ public class AppSettingsTests : IDisposable
     [Fact]
     public async Task Save_CreatesJsonFile()
     {
-        var settings = new AppSettings { ApiKey = "test-key-123" };
+        var settings = new AppSettings();
+        settings.SetApiKey("test-key-123");
         var path = Path.Combine(_tempDir, "settings.json");
 
         await settings.SaveAsync(path);
 
         Assert.True(File.Exists(path));
+        // Verify the file does NOT contain the plaintext key
         var json = await File.ReadAllTextAsync(path);
-        var loaded = JsonSerializer.Deserialize<AppSettings>(json);
-        Assert.NotNull(loaded);
-        Assert.Equal("test-key-123", loaded.ApiKey);
+        Assert.DoesNotContain("test-key-123", json);
     }
 
     [Fact]
@@ -57,7 +56,7 @@ public class AppSettingsTests : IDisposable
 
         var settings = await AppSettings.LoadAsync(path);
 
-        Assert.Equal("", settings.ApiKey);
+        Assert.Equal("", settings.GetApiKey());
         Assert.Equal("Ctrl+Shift+C", settings.Hotkey);
     }
 
@@ -69,31 +68,46 @@ public class AppSettingsTests : IDisposable
 
         var settings = await AppSettings.LoadAsync(path);
 
-        Assert.Equal("", settings.ApiKey);
+        Assert.Equal("", settings.GetApiKey());
     }
 
     [Fact]
     public async Task RoundTrip_PreservesAllFields()
     {
-        var original = new AppSettings
-        {
-            ApiKey = "sk-ant-test",
-            Hotkey = "Ctrl+Alt+F",
-            Model = "claude-haiku-4-5-20251001",
-            SystemPrompt = "Custom prompt",
-            OverlayAutoApplySeconds = 5,
-            StartWithWindows = true,
-        };
+        var original = new AppSettings();
+        original.SetApiKey("sk-ant-test");
+        original.Hotkey = "Ctrl+Alt+F";
+        original.Model = "claude-haiku-4-5-20251001";
+        original.SystemPrompt = "Custom prompt";
+        original.OverlayAutoApplySeconds = 5;
+        original.StartWithWindows = true;
+
         var path = Path.Combine(_tempDir, "settings.json");
 
         await original.SaveAsync(path);
         var loaded = await AppSettings.LoadAsync(path);
 
-        Assert.Equal(original.ApiKey, loaded.ApiKey);
+        Assert.Equal(original.GetApiKey(), loaded.GetApiKey());
         Assert.Equal(original.Hotkey, loaded.Hotkey);
         Assert.Equal(original.Model, loaded.Model);
         Assert.Equal(original.SystemPrompt, loaded.SystemPrompt);
         Assert.Equal(original.OverlayAutoApplySeconds, loaded.OverlayAutoApplySeconds);
         Assert.Equal(original.StartWithWindows, loaded.StartWithWindows);
+    }
+
+    [Fact]
+    public async Task Load_MigratesPlaintextApiKey()
+    {
+        // Simulate a legacy settings file with plaintext ApiKey
+        var path = Path.Combine(_tempDir, "legacy.json");
+        await File.WriteAllTextAsync(path, """{"ApiKey":"sk-legacy-key","Hotkey":"Ctrl+Shift+C"}""");
+
+        var settings = await AppSettings.LoadAsync(path);
+
+        // Key should be readable
+        Assert.Equal("sk-legacy-key", settings.GetApiKey());
+        // Plaintext should have been cleared and encrypted key set
+        Assert.Equal("", settings.ApiKey);
+        Assert.NotEmpty(settings.EncryptedApiKey);
     }
 }

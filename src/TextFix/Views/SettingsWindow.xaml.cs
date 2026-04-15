@@ -14,7 +14,7 @@ public partial class SettingsWindow : Window
         InitializeComponent();
         _settings = settings;
 
-        ApiKeyBox.Text = settings.ApiKey;
+        ApiKeyBox.Password = settings.GetApiKey();
         HotkeyBox.Text = settings.Hotkey;
         AutoApplyBox.Text = settings.OverlayAutoApplySeconds.ToString();
         ModelBox.Text = settings.Model;
@@ -22,7 +22,7 @@ public partial class SettingsWindow : Window
 
     private async void OnSave(object sender, RoutedEventArgs e)
     {
-        _settings.ApiKey = ApiKeyBox.Text.Trim();
+        _settings.SetApiKey(ApiKeyBox.Password.Trim());
         _settings.Hotkey = HotkeyBox.Text.Trim();
         _settings.Model = ModelBox.Text.Trim();
 

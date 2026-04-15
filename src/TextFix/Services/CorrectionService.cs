@@ -6,7 +6,7 @@ public class CorrectionService
 {
     private readonly ClipboardManager _clipboard;
     private readonly FocusTracker _focusTracker;
-    private readonly AiClient _aiClient;
+    private AiClient _aiClient;
     private CancellationTokenSource? _cts;
 
     public CorrectionResult? LastResult { get; private set; }
@@ -17,6 +17,8 @@ public class CorrectionService
         _focusTracker = focusTracker;
         _aiClient = aiClient;
     }
+
+    public void UpdateAiClient(AiClient aiClient) => _aiClient = aiClient;
 
     public event Action? ProcessingStarted;
     public event Action<CorrectionResult>? CorrectionCompleted;
@@ -41,6 +43,10 @@ public class CorrectionService
         ProcessingStarted?.Invoke();
 
         var result = await _aiClient.CorrectAsync(selectedText, _cts.Token);
+
+        if (_cts.Token.IsCancellationRequested)
+            return;
+
         LastResult = result;
         CorrectionCompleted?.Invoke(result);
     }
