@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  id-token: write  # Required for SignPath
 
 jobs:
   build:
@@ -36,7 +37,30 @@ jobs:
           -p:EnableCompressionInSingleFile=true
           -o publish
 
-      - name: Create zip
+      - name: Create unsigned zip (artifact for signing)
+        run: Compress-Archive -Path publish/TextFix.exe -DestinationPath TextFix-unsigned.zip
+
+      - name: Sign with SignPath
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: 'TextFix'
+          signing-policy-slug: 'release-signing'
+          artifact-configuration-slug: 'zip-exe'
+          input-artifact-path: 'TextFix-unsigned.zip'
+          output-artifact-path: 'TextFix-signed.zip'
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 300
+
+      - name: Extract signed exe
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        run: |
+          Remove-Item publish/TextFix.exe
+          Expand-Archive -Path TextFix-signed.zip -DestinationPath publish -Force
+
+      - name: Create release zip
         run: Compress-Archive -Path publish/TextFix.exe -DestinationPath TextFix-${{ github.ref_name }}-win-x64.zip
 
       - name: Create Release
