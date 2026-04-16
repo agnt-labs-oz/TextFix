@@ -47,6 +47,11 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll", EntryPoint = "MapVirtualKeyW")]
     public static partial uint MapVirtualKey(uint uCode, uint uMapType);
 
+    // Post a message to a window's message queue (non-blocking)
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
     // Hotkey modifier flags
     public const uint MOD_ALT = 0x0001;
     public const uint MOD_CONTROL = 0x0002;

@@ -4,6 +4,7 @@ using System.Threading;
 using System.Windows;
 using System.Windows.Forms;
 using System.Windows.Interop;
+using TextFix.Interop;
 using TextFix.Models;
 using TextFix.Services;
 using TextFix.Views;
@@ -25,9 +26,9 @@ public partial class App : Application
     private OverlayWindow? _overlay;
     private AppSettings _settings = new();
     private bool _isBusy;
+    private System.Windows.Threading.DispatcherTimer? _keepAliveTimer;
 
-    // Hidden window needed for hotkey message pump
-    private Window? _hiddenWindow;
+    private Window? _hiddenWindow; // kept for WPF dispatcher pump
 
     protected override async void OnStartup(StartupEventArgs e)
     {
@@ -68,12 +69,22 @@ public partial class App : Application
         _hiddenWindow = new Window
         {
             Width = 0, Height = 0,
+            Left = -9999, Top = -9999,
             WindowStyle = WindowStyle.None,
             ShowInTaskbar = false,
             ShowActivated = false,
         };
-        // Create the HWND without showing the window — needed for hotkey message pump
-        new WindowInteropHelper(_hiddenWindow).EnsureHandle();
+        _hiddenWindow.Show();
+
+        // WPF's dispatcher can stop pumping Win32 messages when no visible window
+        // is active (after overlay hides). A periodic timer tick forces the
+        // dispatcher to keep running, ensuring WM_HOTKEY messages get delivered.
+        _keepAliveTimer = new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1),
+        };
+        _keepAliveTimer.Tick += (_, _) => { }; // no-op, just keeps the pump alive
+        _keepAliveTimer.Start();
     }
 
     private void SetupTrayIcon()
@@ -169,6 +180,7 @@ public partial class App : Application
         _overlay.RetryRequested += OnRetryRequested;
         _overlay.KeepOpenChanged += OnKeepOpenChanged;
         _overlay.ModeChanged += OnOverlayModeChanged;
+        _overlay.OverlayHidden += OnOverlayHidden;
         _overlay.SetActiveMode(_settings.ActiveModeName);
     }
 
@@ -176,6 +188,11 @@ public partial class App : Application
     {
         _settings.KeepOverlayOpen = keepOpen;
         await _settings.SaveAsync();
+    }
+
+    private void OnOverlayHidden()
+    {
+        LogDebug("OverlayHidden");
     }
 
     private async void OnOverlayModeChanged(string modeName)
@@ -247,18 +264,13 @@ public partial class App : Application
 
     private void RegisterHotkey()
     {
-        if (_hiddenWindow is null) return;
-
-        // Unregister old hotkey if listener already exists
-        _hotkeyListener?.Unregister();
-
         if (_hotkeyListener is null)
         {
             _hotkeyListener = new HotkeyListener();
             _hotkeyListener.HotkeyPressed += OnHotkeyPressed;
         }
 
-        if (!_hotkeyListener.Register(_hiddenWindow, _settings.Hotkey))
+        if (!_hotkeyListener.Register(_settings.Hotkey))
         {
             _trayIcon?.ShowBalloonTip(
                 3000,
@@ -376,6 +388,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _keepAliveTimer?.Stop();
         _hotkeyListener?.Dispose();
         _trayIcon?.Dispose();
         _hiddenWindow?.Close();

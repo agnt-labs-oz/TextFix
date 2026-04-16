@@ -40,15 +40,16 @@ public class AiClient
             {
                 Model = _settings.Model,
                 MaxTokens = 4096,
-                System = systemPrompt,
+                System = systemPrompt + "\n\nYou are a text transformation tool, not a chatbot. Output ONLY the transformed text — nothing else. Never explain, comment, apologize, ask questions, or refuse. If the input is unclear or nonsensical, return it unchanged.",
                 Messages =
                 [
-                    new MessageParam { Role = Role.User, Content = $"<text>\n{text}\n</text>" },
+                    new MessageParam { Role = Role.User, Content = $"Transform this text:\n<text>\n{text}\n</text>\n\nOutput only the result:" },
+                    new MessageParam { Role = Role.Assistant, Content = "<result>" },
                 ],
             };
 
             var message = await _client.Messages.Create(parameters, ct);
-            var corrected = message.Content
+            var raw = message.Content
                 .Select(block =>
                 {
                     if (block.TryPickText(out var tb)) return tb.Text;
@@ -57,10 +58,20 @@ public class AiClient
                 .Where(t => t is not null)
                 .FirstOrDefault() ?? text;
 
+            // Strip the closing </result> tag from the prefilled response
+            var corrected = raw
+                .Replace("</result>", "")
+                .Trim();
+
+            // Detect when the model returned a conversational response instead of
+            // corrected text — this happens with ambiguous/nonsensical input.
+            if (string.IsNullOrWhiteSpace(corrected) || LooksLikeRefusal(corrected))
+                return CorrectionResult.Error(text, "Couldn't improve this text — try selecting a clearer passage.");
+
             return new CorrectionResult
             {
                 OriginalText = text,
-                CorrectedText = corrected.Trim(),
+                CorrectedText = corrected,
             };
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -96,5 +107,24 @@ public class AiClient
         {
             return CorrectionResult.Error(text, $"Unexpected error: {ex.Message}");
         }
+    }
+
+    private static bool LooksLikeRefusal(string response)
+    {
+        // If the response is much longer than expected for a correction and
+        // starts with common refusal/explanation patterns, it's not corrected text.
+        var lower = response.TrimStart().ToLowerInvariant();
+        string[] refusalStarts =
+        [
+            "i'm unable", "i am unable", "i cannot", "i can't",
+            "the input", "the text", "this text", "this input",
+            "sorry", "apologi", "unfortunately",
+        ];
+        foreach (var prefix in refusalStarts)
+        {
+            if (lower.StartsWith(prefix))
+                return true;
+        }
+        return false;
     }
 }

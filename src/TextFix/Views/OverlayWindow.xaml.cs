@@ -25,6 +25,7 @@ public partial class OverlayWindow : Window
     public event Action? RetryRequested;
     public event Action<bool>? KeepOpenChanged;
     public event Action<string>? ModeChanged;
+    public event Action? OverlayHidden;
 
     public OverlayWindow()
     {
@@ -235,6 +236,7 @@ public partial class OverlayWindow : Window
         {
             Hide();
             Opacity = 1;
+            OverlayHidden?.Invoke();
         };
         clone.Begin(this);
     }

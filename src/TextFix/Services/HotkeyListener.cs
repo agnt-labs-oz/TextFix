@@ -1,5 +1,4 @@
 using System.IO;
-using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using TextFix.Interop;
@@ -9,17 +8,31 @@ namespace TextFix.Services;
 public class HotkeyListener : IDisposable
 {
     private const int HotkeyId = 9000;
-    private IntPtr _windowHandle;
     private HwndSource? _source;
+    private IntPtr _handle;
 
     public event Action? HotkeyPressed;
 
-    public bool Register(Window window, string hotkeyString)
+    /// <summary>
+    /// Creates a Win32 message-only window (HWND_MESSAGE parent) and registers
+    /// the hotkey on it. Message-only windows exist purely for message processing
+    /// and are not affected by WPF window activation or visibility changes.
+    /// </summary>
+    public bool Register(string hotkeyString)
     {
-        var helper = new WindowInteropHelper(window);
-        _windowHandle = helper.EnsureHandle();
-        _source = HwndSource.FromHwnd(_windowHandle);
-        _source?.AddHook(HwndHook);
+        if (_source is null)
+        {
+            var parameters = new HwndSourceParameters("TextFix_Hotkey")
+            {
+                Width = 0,
+                Height = 0,
+                ParentWindow = new IntPtr(-3), // HWND_MESSAGE
+            };
+            _source = new HwndSource(parameters);
+            _source.AddHook(WndProc);
+            _handle = _source.Handle;
+            Log($"Created message-only window: {_handle}");
+        }
 
         var (modifiers, vk) = ParseHotkey(hotkeyString);
         if (vk == 0)
@@ -28,8 +41,11 @@ public class HotkeyListener : IDisposable
             return false;
         }
 
+        // Unregister first in case it's already registered
+        NativeMethods.UnregisterHotKey(_handle, HotkeyId);
+
         var result = NativeMethods.RegisterHotKey(
-            _windowHandle,
+            _handle,
             HotkeyId,
             modifiers | NativeMethods.MOD_NOREPEAT,
             vk);
@@ -39,37 +55,22 @@ public class HotkeyListener : IDisposable
 
     public void Unregister()
     {
-        if (_windowHandle != IntPtr.Zero)
+        if (_handle != IntPtr.Zero)
         {
-            NativeMethods.UnregisterHotKey(_windowHandle, HotkeyId);
-            _source?.RemoveHook(HwndHook);
+            Log("Unregister called");
+            NativeMethods.UnregisterHotKey(_handle, HotkeyId);
         }
     }
 
-    private IntPtr HwndHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+    private IntPtr WndProc(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
         if (msg == NativeMethods.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
         {
-            Log("WM_HOTKEY received, firing HotkeyPressed");
+            Log("WM_HOTKEY received");
             HotkeyPressed?.Invoke();
             handled = true;
         }
         return IntPtr.Zero;
-    }
-
-    private static void Log(string message)
-    {
-        try
-        {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "TextFix");
-            Directory.CreateDirectory(dir);
-            File.AppendAllText(
-                Path.Combine(dir, "debug.log"),
-                $"[{DateTime.UtcNow:o}] [Hotkey] {message}\n");
-        }
-        catch { }
     }
 
     public static (uint modifiers, uint vk) ParseHotkey(string hotkeyString)
@@ -111,5 +112,21 @@ public class HotkeyListener : IDisposable
     {
         Unregister();
         _source?.Dispose();
+        _source = null;
+        _handle = IntPtr.Zero;
+    }
+
+    private static void Log(string message)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "TextFix");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(
+                Path.Combine(dir, "debug.log"),
+                $"[{DateTime.UtcNow:o}] [Hotkey] {message}\n");
+        }
+        catch { }
     }
 }
