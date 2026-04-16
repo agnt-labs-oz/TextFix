@@ -5,7 +5,7 @@ A lightweight Windows desktop app that corrects and improves your text using AI.
 ## How it works
 
 1. Type or select text in any application (Teams, Outlook, Notepad, VS Code, a browser — anything)
-2. Press **Ctrl+Shift+C** (configurable)
+2. Press **Ctrl+Shift+Z** (configurable)
 3. A floating overlay appears showing the original vs. corrected text
 4. Click **Apply** (or press Enter) to replace your text, or **Cancel** (Esc) to keep the original
 
@@ -49,7 +49,7 @@ dotnet run --project src/TextFix/TextFix.csproj
 2. On first launch, the Settings window opens automatically
 3. Enter your [Anthropic API key](https://console.anthropic.com/settings/keys)
 4. Choose a model (Claude Haiku is the default — fast and cheap)
-5. Close Settings and start correcting text with Ctrl+Shift+C
+5. Close Settings and start correcting text with Ctrl+Shift+Z
 
 ### Configuration
 
@@ -57,7 +57,7 @@ All settings are stored at `%APPDATA%/TextFix/settings.json`. Your API key is en
 
 | Setting | Default | Notes |
 |---------|---------|-------|
-| Hotkey | Ctrl+Shift+C | Any modifier+key combo |
+| Hotkey | Ctrl+Shift+Z | Any modifier+key combo |
 | Model | claude-haiku-4-5 | Haiku, Sonnet 4.5/4.6, Opus 4.6 |
 | Auto-apply delay | 3 seconds | Off, 3s, 5s, 10s |
 | Keep overlay open | Off | Pin overlay for multiple corrections |

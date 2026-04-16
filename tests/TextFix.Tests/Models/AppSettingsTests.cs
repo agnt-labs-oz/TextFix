@@ -25,7 +25,7 @@ public class AppSettingsTests : IDisposable
         var settings = new AppSettings();
 
         Assert.Equal("", settings.GetApiKey());
-        Assert.Equal("Ctrl+Shift+C", settings.Hotkey);
+        Assert.Equal("Ctrl+Shift+Z", settings.Hotkey);
         Assert.Equal("claude-haiku-4-5-20251001", settings.Model);
         Assert.Equal(3, settings.OverlayAutoApplySeconds);
         Assert.False(settings.StartWithWindows);
@@ -57,7 +57,7 @@ public class AppSettingsTests : IDisposable
         var settings = await AppSettings.LoadAsync(path);
 
         Assert.Equal("", settings.GetApiKey());
-        Assert.Equal("Ctrl+Shift+C", settings.Hotkey);
+        Assert.Equal("Ctrl+Shift+Z", settings.Hotkey);
     }
 
     [Fact]
@@ -102,7 +102,7 @@ public class AppSettingsTests : IDisposable
     {
         // Simulate a legacy settings file with plaintext ApiKey
         var path = Path.Combine(_tempDir, "legacy.json");
-        await File.WriteAllTextAsync(path, """{"ApiKey":"sk-legacy-key","Hotkey":"Ctrl+Shift+C"}""");
+        await File.WriteAllTextAsync(path, """{"ApiKey":"sk-legacy-key","Hotkey":"Ctrl+Shift+Z"}""");
 
         var settings = await AppSettings.LoadAsync(path);
 

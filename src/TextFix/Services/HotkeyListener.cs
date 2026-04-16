@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
@@ -21,13 +22,19 @@ public class HotkeyListener : IDisposable
         _source?.AddHook(HwndHook);
 
         var (modifiers, vk) = ParseHotkey(hotkeyString);
-        if (vk == 0) return false;
+        if (vk == 0)
+        {
+            Log($"Register failed: could not parse '{hotkeyString}'");
+            return false;
+        }
 
-        return NativeMethods.RegisterHotKey(
+        var result = NativeMethods.RegisterHotKey(
             _windowHandle,
             HotkeyId,
             modifiers | NativeMethods.MOD_NOREPEAT,
             vk);
+        Log($"Register('{hotkeyString}') mod=0x{modifiers:X} vk=0x{vk:X} → {result}");
+        return result;
     }
 
     public void Unregister()
@@ -43,10 +50,26 @@ public class HotkeyListener : IDisposable
     {
         if (msg == NativeMethods.WM_HOTKEY && wParam.ToInt32() == HotkeyId)
         {
+            Log("WM_HOTKEY received, firing HotkeyPressed");
             HotkeyPressed?.Invoke();
             handled = true;
         }
         return IntPtr.Zero;
+    }
+
+    private static void Log(string message)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "TextFix");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(
+                Path.Combine(dir, "debug.log"),
+                $"[{DateTime.UtcNow:o}] [Hotkey] {message}\n");
+        }
+        catch { }
     }
 
     public static (uint modifiers, uint vk) ParseHotkey(string hotkeyString)

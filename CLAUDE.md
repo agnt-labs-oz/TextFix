@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TextFix is a Windows desktop application that lets users quickly correct and improve typed text using AI. The core workflow: user types text in any app (Teams, editors, console, etc.), selects it, triggers TextFix via hotkey (default Ctrl+Shift+C), and the app grabs the selected text, sends it to Claude for correction, and replaces the original text with the corrected version.
+TextFix is a Windows desktop application that lets users quickly correct and improve typed text using AI. The core workflow: user types text in any app (Teams, editors, console, etc.), selects it, triggers TextFix via hotkey (default Ctrl+Shift+Z), and the app grabs the selected text, sends it to Claude for correction, and replaces the original text with the corrected version.
 
 ### Current State (v0.2)
 Hotkey-triggered select-correct-replace with floating interactive overlay, six correction modes switchable from overlay or tray, correction history, auto-apply countdown, pin-open toggle.
@@ -23,7 +23,7 @@ Multiple AI providers, custom user-defined modes, real-time auto-correction, sta
 
 ```
 App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event routing)
-├── Services/HotkeyListener.cs    — Win32 RegisterHotKey, parses "Ctrl+Shift+C" format
+├── Services/HotkeyListener.cs    — Win32 RegisterHotKey, parses "Ctrl+Shift+Z" format
 ├── Services/CorrectionService.cs — Pipeline orchestrator (capture → AI → paste)
 │   ├── Services/ClipboardManager.cs — SendInput Ctrl+C/V, clipboard save/restore
 │   ├── Services/FocusTracker.cs     — GetForegroundWindow, IsWindow, IsIconic, RestoreFocus

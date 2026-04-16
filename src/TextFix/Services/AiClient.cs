@@ -43,7 +43,7 @@ public class AiClient
                 System = systemPrompt,
                 Messages =
                 [
-                    new MessageParam { Role = Role.User, Content = text },
+                    new MessageParam { Role = Role.User, Content = $"<text>\n{text}\n</text>" },
                 ],
             };
 

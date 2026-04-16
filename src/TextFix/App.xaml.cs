@@ -270,13 +270,19 @@ public partial class App : Application
 
     private async void OnHotkeyPressed()
     {
-        if (_isBusy) return;
+        LogDebug($"Hotkey pressed. _isBusy={_isBusy}");
+        if (_isBusy)
+        {
+            LogDebug("Hotkey ignored — busy");
+            return;
+        }
         _isBusy = true;
 
         try
         {
             if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
             {
+                LogDebug("No API key configured");
                 _overlay?.ShowProcessing();
                 _overlay?.ShowResult(
                     CorrectionResult.Error("", "Set up your API key in Settings."),
@@ -284,27 +290,34 @@ public partial class App : Application
                 return;
             }
 
+            LogDebug("Starting TriggerCorrectionAsync");
             await _correctionService!.TriggerCorrectionAsync();
+            LogDebug("TriggerCorrectionAsync completed");
         }
         catch (Exception ex)
         {
             LogError(ex);
+            LogDebug($"Hotkey handler exception: {ex.Message}");
             _overlay?.ShowProcessing();
             _overlay?.ShowResult(CorrectionResult.Error("", $"Error: {ex.Message}"), 0);
         }
         finally
         {
             _isBusy = false;
+            LogDebug("Hotkey handler done, _isBusy=false");
         }
     }
 
     private async void OnUserResponded(bool apply)
     {
+        LogDebug($"UserResponded: apply={apply}");
         if (_correctionService is null) return;
 
         if (apply && _correctionService.LastResult is not null)
         {
+            LogDebug("Applying correction");
             await _correctionService.ApplyCorrectionAsync(_correctionService.LastResult);
+            LogDebug("ApplyCorrectionAsync done");
 
             if (_settings.KeepOverlayOpen)
                 _overlay?.ShowApplied();
@@ -313,10 +326,8 @@ public partial class App : Application
         }
         else
         {
+            LogDebug("Cancelling correction");
             _correctionService.CancelAndRestore();
-            // Don't call Hide() here — the overlay already fades itself out
-            // via OnCancelClick or OnKeyDown(Esc). Calling Hide() again after
-            // FadeOutAndHide() interrupts the animation and can break window state.
         }
     }
 
@@ -382,6 +393,20 @@ public partial class App : Application
             Directory.CreateDirectory(dir);
             var logPath = Path.Combine(dir, "error.log");
             File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] {ex}\n\n");
+        }
+        catch { /* best effort */ }
+    }
+
+    private static void LogDebug(string message)
+    {
+        try
+        {
+            var dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "TextFix");
+            Directory.CreateDirectory(dir);
+            var logPath = Path.Combine(dir, "debug.log");
+            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] {message}\n");
         }
         catch { /* best effort */ }
     }

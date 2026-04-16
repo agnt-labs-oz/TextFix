@@ -176,6 +176,12 @@ public partial class OverlayWindow : Window
             : new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x66, 0x66, 0x66));
     }
 
+    private void OnDragMove(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Left)
+            DragMove();
+    }
+
     private void OnPinToggle(object sender, MouseButtonEventArgs e)
     {
         _keepOpen = !_keepOpen;

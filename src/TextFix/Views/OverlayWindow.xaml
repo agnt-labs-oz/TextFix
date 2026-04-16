@@ -149,7 +149,8 @@
         </Storyboard>
     </Window.Resources>
 
-    <Border x:Name="MainBorder" Style="{StaticResource PillBorder}" MaxWidth="420">
+    <Border x:Name="MainBorder" Style="{StaticResource PillBorder}" MaxWidth="420"
+            MouseLeftButtonDown="OnDragMove">
         <StackPanel>
             <!-- Processing state: spinner + "Correcting..." -->
             <StackPanel x:Name="ProcessingPanel" Orientation="Horizontal" Visibility="Visible">

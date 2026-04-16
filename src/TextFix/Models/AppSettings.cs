@@ -24,7 +24,7 @@ public class AppSettings
     /// </summary>
     public string ApiKey { get; set; } = "";
 
-    public string Hotkey { get; set; } = "Ctrl+Shift+C";
+    public string Hotkey { get; set; } = "Ctrl+Shift+Z";
     public string Model { get; set; } = "claude-haiku-4-5-20251001";
 
     public string SystemPrompt { get; set; } =
