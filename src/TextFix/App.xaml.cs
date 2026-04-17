@@ -97,6 +97,8 @@ public partial class App : Application
             ContextMenuStrip = new ContextMenuStrip(),
         };
 
+        _trayIcon.MouseClick += OnTrayClick;
+
         // Mode submenu
         var modeMenu = new ToolStripMenuItem("Mode");
         foreach (var mode in CorrectionMode.Defaults)
@@ -181,6 +183,7 @@ public partial class App : Application
         _overlay.KeepOpenChanged += OnKeepOpenChanged;
         _overlay.ModeChanged += OnOverlayModeChanged;
         _overlay.OverlayHidden += OnOverlayHidden;
+        _overlay.CopyRequested += OnCopyRequested;
         _overlay.SetActiveMode(_settings.ActiveModeName);
     }
 
@@ -193,6 +196,27 @@ public partial class App : Application
     private void OnOverlayHidden()
     {
         LogDebug("OverlayHidden");
+    }
+
+    private void OnTrayClick(object? sender, MouseEventArgs e)
+    {
+        if (e.Button != MouseButtons.Left) return;
+
+        if (_overlay?.IsVisible == true)
+        {
+            _overlay.FadeOutAndHide();
+        }
+        else
+        {
+            _overlay?.ShowIdle(
+                _correctionService?.History ?? new CorrectionHistory(),
+                _correctionService?.LastResult);
+        }
+    }
+
+    private void OnCopyRequested()
+    {
+        CopyLastCorrection();
     }
 
     private async void OnOverlayModeChanged(string modeName)
@@ -339,7 +363,11 @@ public partial class App : Application
             LogDebug("ApplyCorrectionAsync done");
 
             if (_settings.KeepOverlayOpen)
+            {
+                if (_correctionService is not null)
+                    _overlay?.SetHistory(_correctionService.History);
                 _overlay?.ShowApplied();
+            }
             else
                 _overlay?.FadeOutAndHide();
         }
