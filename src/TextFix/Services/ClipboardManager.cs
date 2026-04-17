@@ -8,7 +8,7 @@ namespace TextFix.Services;
 
 public class ClipboardManager
 {
-    private string? _savedClipboardText;
+    private System.Windows.IDataObject? _savedClipboardData;
     private IntPtr _sourceWindow;
     private const int ClipboardRetryCount = 3;
     private const int ClipboardRetryDelayMs = 50;
@@ -18,8 +18,8 @@ public class ClipboardManager
 
     public async Task<string?> CaptureSelectedTextAsync()
     {
-        _savedClipboardText = await GetClipboardTextAsync();
-        Log($"Saved clipboard: '{Truncate(_savedClipboardText)}'");
+        _savedClipboardData = SaveClipboardData();
+        Log($"Saved clipboard: '{Truncate(GetTextFromData(_savedClipboardData))}'");
 
         // Wait for modifier keys to be physically released by the user
         await WaitForModifierKeysReleased();
@@ -99,18 +99,71 @@ public class ClipboardManager
 
     public async Task RestoreClipboardAsync()
     {
-        if (_savedClipboardText is not null)
+        if (_savedClipboardData is not null)
         {
             try
             {
-                await SetClipboardTextAsync(_savedClipboardText);
+                await RestoreClipboardDataAsync(_savedClipboardData);
             }
             catch
             {
                 // Best effort — don't crash if restore fails
             }
         }
-        _savedClipboardText = null;
+        _savedClipboardData = null;
+    }
+
+    private static System.Windows.IDataObject? SaveClipboardData()
+    {
+        try
+        {
+            var source = Clipboard.GetDataObject();
+            if (source is null) return null;
+
+            var copy = new System.Windows.DataObject();
+            foreach (var format in source.GetFormats())
+            {
+                try
+                {
+                    var data = source.GetData(format);
+                    if (data is not null)
+                        copy.SetData(format, data);
+                }
+                catch
+                {
+                    // Some formats (e.g. delayed-render COM objects) can't be read — skip them
+                }
+            }
+            return copy;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static async Task RestoreClipboardDataAsync(System.Windows.IDataObject data)
+    {
+        for (int i = 0; i < ClipboardRetryCount; i++)
+        {
+            try
+            {
+                Clipboard.SetDataObject(data, true);
+                return;
+            }
+            catch (COMException) when (i < ClipboardRetryCount - 1)
+            {
+                await Task.Delay(ClipboardRetryDelayMs);
+            }
+        }
+    }
+
+    private static string? GetTextFromData(System.Windows.IDataObject? data)
+    {
+        if (data is null) return null;
+        return data.GetDataPresent(System.Windows.DataFormats.UnicodeText)
+            ? data.GetData(System.Windows.DataFormats.UnicodeText) as string
+            : null;
     }
 
     public async Task SetClipboardTextAsync(string text)
