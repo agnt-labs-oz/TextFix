@@ -22,6 +22,35 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="SmallActionButton" TargetType="Button">
+            <Setter Property="Padding" Value="6,3"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.7"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="ActionButton" TargetType="Button">
             <Setter Property="Padding" Value="10,4"/>
             <Setter Property="Margin" Value="0,0,8,0"/>
@@ -243,6 +272,48 @@
                 <TextBlock x:Name="InfoHint" Foreground="#666666"
                            FontFamily="Segoe UI" FontSize="10" Margin="0,6,0,0"
                            Visibility="Collapsed"/>
+            </StackPanel>
+
+            <!-- Idle state: opened from tray, no active correction -->
+            <StackPanel x:Name="IdlePanel" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <TextBlock Text="Tx" Foreground="#6C63FF"
+                               FontSize="16" FontWeight="Bold" FontFamily="Segoe UI"
+                               Margin="0,0,8,0" VerticalAlignment="Center"/>
+                    <TextBlock Text="TextFix" Foreground="#E0E0E0"
+                               FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+                <TextBlock x:Name="IdleStatsText" Foreground="#666666"
+                           FontFamily="Segoe UI" FontSize="11" Margin="0,0,0,4"/>
+            </StackPanel>
+
+            <!-- History panel: toggled by History button in action row -->
+            <StackPanel x:Name="HistoryPanel" Visibility="Collapsed" Margin="0,8,0,0">
+                <DockPanel Margin="0,0,0,6">
+                    <TextBlock x:Name="HistoryStatsText" Foreground="#666"
+                               FontFamily="Segoe UI" FontSize="11"
+                               DockPanel.Dock="Right" VerticalAlignment="Center"/>
+                    <TextBlock Text="Recent corrections" Foreground="#E0E0E0"
+                               FontFamily="Segoe UI" FontSize="12" VerticalAlignment="Center"/>
+                </DockPanel>
+                <ScrollViewer MaxHeight="160" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="HistoryList"/>
+                </ScrollViewer>
+            </StackPanel>
+
+            <!-- Action row: redo, copy, history, close -->
+            <StackPanel x:Name="ActionRowPanel" Orientation="Horizontal"
+                        Visibility="Collapsed" Margin="0,8,0,0">
+                <Button x:Name="RedoButton" Content="&#x21BB; Redo"
+                        Background="#2A2A3E" Foreground="#AAAAAA"
+                        Style="{StaticResource SmallActionButton}" Click="OnActionRedo"/>
+                <Button x:Name="CopyButton" Content="&#x2398; Copy"
+                        Background="#2A2A3E" Foreground="#AAAAAA"
+                        Style="{StaticResource SmallActionButton}" Click="OnActionCopy"/>
+                <Button x:Name="HistoryToggleButton" Content="&#x29D6; History"
+                        Background="#2A2A3E" Foreground="#AAAAAA"
+                        Style="{StaticResource SmallActionButton}" Click="OnActionHistoryToggle"/>
             </StackPanel>
         </StackPanel>
     </Border>
