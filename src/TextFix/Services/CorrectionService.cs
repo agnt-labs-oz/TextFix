@@ -48,6 +48,7 @@ public class CorrectionService
 
         var mode = _settings.GetActiveMode();
         var result = await _aiClient.CorrectAsync(selectedText, mode.SystemPrompt, _cts.Token);
+        result = result with { ModeName = mode.Name };
 
         if (_cts.Token.IsCancellationRequested)
             return;
