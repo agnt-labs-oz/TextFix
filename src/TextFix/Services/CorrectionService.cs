@@ -61,7 +61,7 @@ public class CorrectionService
     {
         if (result.IsError || !result.HasChanges)
         {
-            _clipboard.RestoreClipboard();
+            await _clipboard.RestoreClipboardAsync();
             return;
         }
 
@@ -74,19 +74,19 @@ public class CorrectionService
             await _clipboard.PasteTextAsync(result.CorrectedText);
             // Small delay before restoring clipboard so paste completes
             await Task.Delay(200);
-            _clipboard.RestoreClipboard();
+            await _clipboard.RestoreClipboardAsync();
         }
         else
         {
-            _clipboard.SetClipboardText(result.CorrectedText);
+            await _clipboard.SetClipboardTextAsync(result.CorrectedText);
             FocusLost?.Invoke();
         }
     }
 
-    public void CancelAndRestore()
+    public async Task CancelAndRestoreAsync()
     {
         Cancel();
-        _clipboard.RestoreClipboard();
+        await _clipboard.RestoreClipboardAsync();
     }
 
     private void Cancel()

@@ -25,7 +25,7 @@ public partial class App : Application
     private FocusTracker? _focusTracker;
     private OverlayWindow? _overlay;
     private AppSettings _settings = new();
-    private bool _isBusy;
+    private int _isBusy;
     private System.Windows.Threading.DispatcherTimer? _keepAliveTimer;
 
     private Window? _hiddenWindow; // kept for WPF dispatcher pump
@@ -35,7 +35,7 @@ public partial class App : Application
         base.OnStartup(e);
 
         // Single instance check
-        _mutex = new Mutex(true, "TextFix_SingleInstance", out bool isNew);
+        _mutex = new Mutex(true, @"Local\TextFix_SingleInstance", out bool isNew);
         if (!isNew)
         {
             MessageBox.Show("TextFix is already running.", "TextFix",
@@ -204,8 +204,7 @@ public partial class App : Application
 
     private async void OnRetryRequested()
     {
-        if (_isBusy) return;
-        _isBusy = true;
+        if (Interlocked.CompareExchange(ref _isBusy, 1, 0) != 0) return;
 
         try
         {
@@ -228,7 +227,7 @@ public partial class App : Application
         }
         finally
         {
-            _isBusy = false;
+            Interlocked.Exchange(ref _isBusy, 0);
         }
     }
 
@@ -292,12 +291,11 @@ public partial class App : Application
     private async void OnHotkeyPressed()
     {
         LogDebug($"Hotkey pressed. _isBusy={_isBusy}");
-        if (_isBusy)
+        if (Interlocked.CompareExchange(ref _isBusy, 1, 0) != 0)
         {
             LogDebug("Hotkey ignored — busy");
             return;
         }
-        _isBusy = true;
 
         try
         {
@@ -324,7 +322,7 @@ public partial class App : Application
         }
         finally
         {
-            _isBusy = false;
+            Interlocked.Exchange(ref _isBusy, 0);
             LogDebug("Hotkey handler done, _isBusy=false");
         }
     }
@@ -348,7 +346,7 @@ public partial class App : Application
         else
         {
             LogDebug("Cancelling correction");
-            _correctionService.CancelAndRestore();
+            await _correctionService.CancelAndRestoreAsync();
         }
     }
 

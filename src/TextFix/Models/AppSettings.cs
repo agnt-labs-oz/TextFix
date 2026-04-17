@@ -83,10 +83,10 @@ public class AppSettings
             EncryptedApiKey = Convert.ToBase64String(encrypted);
             ApiKey = ""; // Clear legacy plaintext
         }
-        catch
+        catch (Exception ex)
         {
-            // Fallback: store plaintext if DPAPI fails (shouldn't happen on Windows)
-            ApiKey = plainKey;
+            throw new InvalidOperationException(
+                "Failed to encrypt API key with DPAPI. Cannot store key securely.", ex);
         }
     }
 

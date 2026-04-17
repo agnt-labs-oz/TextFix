@@ -107,7 +107,16 @@ public partial class SettingsWindow : Window
 
         _settings.KeepOverlayOpen = KeepOverlayOpenBox.IsChecked == true;
 
-        await _settings.SaveAsync();
+        try
+        {
+            await _settings.SaveAsync();
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Failed to save settings: {ex.Message}", "TextFix",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            return;
+        }
         SettingsChanged = true;
         Close();
     }

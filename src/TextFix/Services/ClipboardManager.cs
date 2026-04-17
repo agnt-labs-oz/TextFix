@@ -18,7 +18,7 @@ public class ClipboardManager
 
     public async Task<string?> CaptureSelectedTextAsync()
     {
-        _savedClipboardText = GetClipboardText();
+        _savedClipboardText = await GetClipboardTextAsync();
         Log($"Saved clipboard: '{Truncate(_savedClipboardText)}'");
 
         // Wait for modifier keys to be physically released by the user
@@ -49,7 +49,7 @@ public class ClipboardManager
             Log($"Sent Ctrl+C (attempt {attempt})");
             await Task.Delay(PostKeystrokeDelayMs * attempt);
 
-            newText = GetClipboardText();
+            newText = await GetClipboardTextAsync();
             Log($"Clipboard after Ctrl+C attempt {attempt}: '{Truncate(newText)}'");
 
             if (!string.IsNullOrEmpty(newText))
@@ -91,19 +91,19 @@ public class ClipboardManager
 
     public async Task PasteTextAsync(string text)
     {
-        SetClipboardText(text);
+        await SetClipboardTextAsync(text);
         await WaitForModifierKeysReleased();
         SimulateCtrlV();
         await Task.Delay(PostKeystrokeDelayMs);
     }
 
-    public void RestoreClipboard()
+    public async Task RestoreClipboardAsync()
     {
         if (_savedClipboardText is not null)
         {
             try
             {
-                SetClipboardText(_savedClipboardText);
+                await SetClipboardTextAsync(_savedClipboardText);
             }
             catch
             {
@@ -113,7 +113,7 @@ public class ClipboardManager
         _savedClipboardText = null;
     }
 
-    public void SetClipboardText(string text)
+    public async Task SetClipboardTextAsync(string text)
     {
         for (int i = 0; i < ClipboardRetryCount; i++)
         {
@@ -124,12 +124,12 @@ public class ClipboardManager
             }
             catch (COMException) when (i < ClipboardRetryCount - 1)
             {
-                Thread.Sleep(ClipboardRetryDelayMs);
+                await Task.Delay(ClipboardRetryDelayMs);
             }
         }
     }
 
-    private string? GetClipboardText()
+    private async Task<string?> GetClipboardTextAsync()
     {
         for (int i = 0; i < ClipboardRetryCount; i++)
         {
@@ -139,7 +139,7 @@ public class ClipboardManager
             }
             catch (COMException) when (i < ClipboardRetryCount - 1)
             {
-                Thread.Sleep(ClipboardRetryDelayMs);
+                await Task.Delay(ClipboardRetryDelayMs);
             }
         }
         return null;

@@ -13,7 +13,6 @@ namespace TextFix.Views;
 public partial class OverlayWindow : Window
 {
     private DispatcherTimer? _autoApplyTimer;
-    private DispatcherTimer? _spinnerTimer;
     private int _countdownSeconds;
     private CorrectionResult? _currentResult;
     private bool _showingError;
@@ -70,9 +69,9 @@ public partial class OverlayWindow : Window
         ErrorPanel.Visibility = Visibility.Collapsed;
         InfoPanel.Visibility = Visibility.Collapsed;
 
-        PositionNearCursor();
         StartSpinnerAnimation();
         Show();
+        Dispatcher.InvokeAsync(PositionNearCursor, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
     public void ShowResult(CorrectionResult result, int autoApplySeconds, bool keepOpen = false)
@@ -209,7 +208,7 @@ public partial class OverlayWindow : Window
     private void OnRetryClick(object sender, RoutedEventArgs e)
     {
         StopAutoApply();
-        Hide();
+        HideImmediate();
         RetryRequested?.Invoke();
     }
 
@@ -227,6 +226,13 @@ public partial class OverlayWindow : Window
     }
 
     // --- End button handlers ---
+
+    private void HideImmediate()
+    {
+        Hide();
+        Opacity = 1;
+        OverlayHidden?.Invoke();
+    }
 
     public void FadeOutAndHide()
     {
@@ -275,7 +281,7 @@ public partial class OverlayWindow : Window
             StopAutoApply();
             if (_showingError)
             {
-                Hide();
+                HideImmediate();
                 RetryRequested?.Invoke();
             }
             else if (_showingApplied)
@@ -332,23 +338,28 @@ public partial class OverlayWindow : Window
         CountdownText.Visibility = Visibility.Collapsed;
     }
 
+    private Storyboard? _spinnerStoryboard;
+
     private void StartSpinnerAnimation()
     {
-        _spinnerTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
-        double angle = 0;
-        _spinnerTimer.Tick += (_, _) =>
+        if (_spinnerStoryboard is not null) return;
+        var animation = new DoubleAnimation
         {
-            angle = (angle + 4) % 360;
-            if (Spinner.RenderTransform is WpfMedia.RotateTransform rt)
-                rt.Angle = angle;
+            From = 0, To = 360,
+            Duration = new Duration(TimeSpan.FromSeconds(1.5)),
+            RepeatBehavior = RepeatBehavior.Forever,
         };
-        _spinnerTimer.Start();
+        Storyboard.SetTarget(animation, Spinner);
+        Storyboard.SetTargetProperty(animation, new PropertyPath("RenderTransform.Angle"));
+        _spinnerStoryboard = new Storyboard();
+        _spinnerStoryboard.Children.Add(animation);
+        _spinnerStoryboard.Begin(this);
     }
 
     private void StopSpinnerAnimation()
     {
-        _spinnerTimer?.Stop();
-        _spinnerTimer = null;
+        _spinnerStoryboard?.Stop(this);
+        _spinnerStoryboard = null;
     }
 
     private static int CountChanges(string original, string corrected)
