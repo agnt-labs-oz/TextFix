@@ -27,9 +27,6 @@ public class AppSettings
     public string Hotkey { get; set; } = "Ctrl+Shift+Z";
     public string Model { get; set; } = "claude-haiku-4-5-20251001";
 
-    public string SystemPrompt { get; set; } =
-        "Fix all typos, spelling, and grammar errors in the following text. Return only the corrected text with no explanation. Preserve the original meaning, tone, and formatting.";
-
     public int OverlayAutoApplySeconds { get; set; } = 3;
     public bool KeepOverlayOpen { get; set; }
     public bool StartWithWindows { get; set; }

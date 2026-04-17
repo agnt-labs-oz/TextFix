@@ -1,5 +1,6 @@
 using System.Windows;
 using TextFix.Models;
+using TextFix.Services;
 
 namespace TextFix.Views;
 
@@ -85,9 +86,18 @@ public partial class SettingsWindow : Window
 
     private async void OnSave(object sender, RoutedEventArgs e)
     {
+        var hotkeyText = HotkeyBox.Text.Trim();
+        var (_, vk) = HotkeyListener.ParseHotkey(hotkeyText);
+        if (vk == 0)
+        {
+            System.Windows.MessageBox.Show("Invalid hotkey format. Example: Ctrl+Shift+Z", "TextFix",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         var apiKey = _keyVisible ? ApiKeyTextBox.Text.Trim() : ApiKeyBox.Password.Trim();
         _settings.SetApiKey(apiKey);
-        _settings.Hotkey = HotkeyBox.Text.Trim();
+        _settings.Hotkey = hotkeyText;
         _settings.Model = ModelBox.SelectedItem as string ?? _settings.Model;
         _settings.ActiveModeName = ModeBox.SelectedItem as string ?? _settings.ActiveModeName;
 

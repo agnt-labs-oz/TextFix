@@ -29,9 +29,7 @@ public class AppSettingsTests : IDisposable
         Assert.Equal("claude-haiku-4-5-20251001", settings.Model);
         Assert.Equal(3, settings.OverlayAutoApplySeconds);
         Assert.False(settings.StartWithWindows);
-        Assert.Equal(
-            "Fix all typos, spelling, and grammar errors in the following text. Return only the corrected text with no explanation. Preserve the original meaning, tone, and formatting.",
-            settings.SystemPrompt);
+        Assert.Equal("Fix errors", settings.ActiveModeName);
     }
 
     [Fact]
@@ -78,7 +76,6 @@ public class AppSettingsTests : IDisposable
         original.SetApiKey("sk-ant-test");
         original.Hotkey = "Ctrl+Alt+F";
         original.Model = "claude-haiku-4-5-20251001";
-        original.SystemPrompt = "Custom prompt";
         original.OverlayAutoApplySeconds = 5;
         original.KeepOverlayOpen = true;
         original.StartWithWindows = true;
@@ -91,7 +88,6 @@ public class AppSettingsTests : IDisposable
         Assert.Equal(original.GetApiKey(), loaded.GetApiKey());
         Assert.Equal(original.Hotkey, loaded.Hotkey);
         Assert.Equal(original.Model, loaded.Model);
-        Assert.Equal(original.SystemPrompt, loaded.SystemPrompt);
         Assert.Equal(original.OverlayAutoApplySeconds, loaded.OverlayAutoApplySeconds);
         Assert.Equal(original.KeepOverlayOpen, loaded.KeepOverlayOpen);
         Assert.Equal(original.StartWithWindows, loaded.StartWithWindows);

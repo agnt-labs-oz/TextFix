@@ -280,7 +280,7 @@ public partial class OverlayWindow : Window
             }
             else if (_showingApplied)
             {
-                // In applied state, Enter does nothing — user presses hotkey for next
+                FadeOutAndHide();
             }
             else
             {

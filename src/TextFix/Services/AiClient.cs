@@ -103,9 +103,9 @@ public class AiClient
         {
             return CorrectionResult.Error(text, "Cannot reach API — check your connection.");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            return CorrectionResult.Error(text, $"Unexpected error: {ex.Message}");
+            return CorrectionResult.Error(text, "An unexpected error occurred.");
         }
     }
 

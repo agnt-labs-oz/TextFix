@@ -209,13 +209,22 @@ public partial class App : Application
 
         try
         {
+            if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+            {
+                _overlay?.ShowProcessing();
+                _overlay?.ShowResult(
+                    CorrectionResult.Error("", "Set up your API key in Settings."),
+                    0);
+                return;
+            }
+
             await _correctionService!.TriggerCorrectionAsync();
         }
         catch (Exception ex)
         {
             LogError(ex);
             _overlay?.ShowProcessing();
-            _overlay?.ShowResult(CorrectionResult.Error("", $"Error: {ex.Message}"), 0);
+            _overlay?.ShowResult(CorrectionResult.Error("", "An unexpected error occurred."), 0);
         }
         finally
         {
@@ -311,7 +320,7 @@ public partial class App : Application
             LogError(ex);
             LogDebug($"Hotkey handler exception: {ex.Message}");
             _overlay?.ShowProcessing();
-            _overlay?.ShowResult(CorrectionResult.Error("", $"Error: {ex.Message}"), 0);
+            _overlay?.ShowResult(CorrectionResult.Error("", "An unexpected error occurred."), 0);
         }
         finally
         {
@@ -410,6 +419,7 @@ public partial class App : Application
         catch { /* best effort */ }
     }
 
+    [System.Diagnostics.Conditional("DEBUG")]
     private static void LogDebug(string message)
     {
         try

@@ -116,6 +116,7 @@ public class HotkeyListener : IDisposable
         _handle = IntPtr.Zero;
     }
 
+    [System.Diagnostics.Conditional("DEBUG")]
     private static void Log(string message)
     {
         try
