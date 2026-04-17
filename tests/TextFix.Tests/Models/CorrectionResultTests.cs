@@ -59,4 +59,41 @@ public class CorrectionResultTests
         Assert.False(result.HasChanges);
         Assert.Equal("", result.OriginalText);
     }
+
+    [Fact]
+    public void Timestamp_DefaultsToUtcNow()
+    {
+        var before = DateTime.UtcNow;
+        var result = new CorrectionResult
+        {
+            OriginalText = "hi",
+            CorrectedText = "hello",
+        };
+        var after = DateTime.UtcNow;
+
+        Assert.InRange(result.Timestamp, before, after);
+    }
+
+    [Fact]
+    public void ModeName_DefaultsToEmpty()
+    {
+        var result = new CorrectionResult
+        {
+            OriginalText = "hi",
+            CorrectedText = "hello",
+        };
+        Assert.Equal("", result.ModeName);
+    }
+
+    [Fact]
+    public void ModeName_CanBeSet()
+    {
+        var result = new CorrectionResult
+        {
+            OriginalText = "hi",
+            CorrectedText = "hello",
+            ModeName = "Professional",
+        };
+        Assert.Equal("Professional", result.ModeName);
+    }
 }
