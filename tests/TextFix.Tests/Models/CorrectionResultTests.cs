@@ -96,4 +96,40 @@ public class CorrectionResultTests
         };
         Assert.Equal("Professional", result.ModeName);
     }
+
+    [Fact]
+    public void InputTokens_DefaultsToZero()
+    {
+        var result = new CorrectionResult
+        {
+            OriginalText = "hi",
+            CorrectedText = "hello",
+        };
+        Assert.Equal(0, result.InputTokens);
+    }
+
+    [Fact]
+    public void OutputTokens_DefaultsToZero()
+    {
+        var result = new CorrectionResult
+        {
+            OriginalText = "hi",
+            CorrectedText = "hello",
+        };
+        Assert.Equal(0, result.OutputTokens);
+    }
+
+    [Fact]
+    public void Tokens_CanBeSet()
+    {
+        var result = new CorrectionResult
+        {
+            OriginalText = "hi",
+            CorrectedText = "hello",
+            InputTokens = 150,
+            OutputTokens = 42,
+        };
+        Assert.Equal(150, result.InputTokens);
+        Assert.Equal(42, result.OutputTokens);
+    }
 }
