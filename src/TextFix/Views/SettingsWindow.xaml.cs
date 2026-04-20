@@ -1,6 +1,9 @@
 using System.Windows;
+using System.Windows.Controls;
 using TextFix.Models;
 using TextFix.Services;
+using WpfButton = System.Windows.Controls.Button;
+using WpfMessageBox = System.Windows.MessageBox;
 
 namespace TextFix.Views;
 
@@ -14,7 +17,9 @@ public partial class SettingsWindow : Window
         "claude-haiku-4-5-20251001",
         "claude-sonnet-4-5-20250514",
         "claude-sonnet-4-6",
+        "claude-sonnet-4-7",
         "claude-opus-4-6",
+        "claude-opus-4-7",
     ];
 
     private static readonly (string Label, int Seconds)[] AutoApplyOptions =
@@ -44,9 +49,7 @@ public partial class SettingsWindow : Window
             ModelBox.SelectedItem = settings.Model;
         }
 
-        foreach (var mode in CorrectionMode.Defaults)
-            ModeBox.Items.Add(mode.Name);
-        ModeBox.SelectedItem = settings.ActiveModeName;
+        RefreshModeBox();
 
         int selectedIndex = 0;
         for (int i = 0; i < AutoApplyOptions.Length; i++)
@@ -58,6 +61,144 @@ public partial class SettingsWindow : Window
         AutoApplyBox.SelectedIndex = selectedIndex;
 
         KeepOverlayOpenBox.IsChecked = settings.KeepOverlayOpen;
+
+        PopulateCustomModesList();
+    }
+
+    private void RefreshModeBox()
+    {
+        var current = ModeBox.SelectedItem as string ?? _settings.ActiveModeName;
+        ModeBox.Items.Clear();
+        foreach (var mode in _settings.AllModes())
+            ModeBox.Items.Add(mode.Name);
+        ModeBox.SelectedItem = current;
+        if (ModeBox.SelectedItem is null && ModeBox.Items.Count > 0)
+            ModeBox.SelectedIndex = 0;
+    }
+
+    private void PopulateCustomModesList()
+    {
+        CustomModesList.Children.Clear();
+        foreach (var mode in _settings.CustomModes)
+        {
+            var modeName = mode.Name; // capture for closure
+
+            var row = new Grid { Margin = new Thickness(0, 2, 0, 2) };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+            var nameBlock = new TextBlock
+            {
+                Text = modeName,
+                Foreground = System.Windows.Media.Brushes.LightGray,
+                FontSize = 12,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(4, 0, 4, 0)
+            };
+            Grid.SetColumn(nameBlock, 0);
+
+            var editBtn = new WpfButton
+            {
+                Content = "Edit",
+                Width = 40,
+                Height = 22,
+                FontSize = 11,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Background = System.Windows.Media.Brushes.DimGray,
+                Foreground = System.Windows.Media.Brushes.White,
+                BorderBrush = System.Windows.Media.Brushes.Transparent,
+                Margin = new Thickness(2, 0, 2, 0),
+                Tag = modeName
+            };
+            editBtn.Click += OnEditCustomMode;
+            Grid.SetColumn(editBtn, 1);
+
+            var deleteBtn = new WpfButton
+            {
+                Content = "Del",
+                Width = 36,
+                Height = 22,
+                FontSize = 11,
+                Cursor = System.Windows.Input.Cursors.Hand,
+                Background = System.Windows.Media.Brushes.IndianRed,
+                Foreground = System.Windows.Media.Brushes.White,
+                BorderBrush = System.Windows.Media.Brushes.Transparent,
+                Margin = new Thickness(2, 0, 0, 0),
+                Tag = modeName
+            };
+            deleteBtn.Click += OnDeleteCustomMode;
+            Grid.SetColumn(deleteBtn, 2);
+
+            row.Children.Add(nameBlock);
+            row.Children.Add(editBtn);
+            row.Children.Add(deleteBtn);
+
+            CustomModesList.Children.Add(row);
+        }
+    }
+
+    private void OnAddCustomMode(object sender, RoutedEventArgs e)
+    {
+        var dlg = new CustomModeDialog { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        var name = dlg.ModeName;
+        // Prevent duplicate names
+        if (_settings.AllModes().Any(m => m.Name == name))
+        {
+            WpfMessageBox.Show($"A mode named \"{name}\" already exists.", "TextFix",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        _settings.CustomModes.Add(new CorrectionMode { Name = name, SystemPrompt = dlg.ModePrompt });
+        PopulateCustomModesList();
+        RefreshModeBox();
+    }
+
+    private void OnEditCustomMode(object sender, RoutedEventArgs e)
+    {
+        var name = (sender as WpfButton)?.Tag as string;
+        var mode = _settings.CustomModes.FirstOrDefault(m => m.Name == name);
+        if (mode is null) return;
+
+        var dlg = new CustomModeDialog(mode.Name, mode.SystemPrompt) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        var newName = dlg.ModeName;
+        // Check for name conflict (allow keeping same name)
+        if (newName != name && _settings.AllModes().Any(m => m.Name == newName))
+        {
+            WpfMessageBox.Show($"A mode named \"{newName}\" already exists.", "TextFix",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        var idx = _settings.CustomModes.IndexOf(mode);
+        _settings.CustomModes[idx] = new CorrectionMode { Name = newName, SystemPrompt = dlg.ModePrompt };
+
+        // Update active mode name if it was renamed
+        if (_settings.ActiveModeName == name)
+            _settings.ActiveModeName = newName;
+
+        PopulateCustomModesList();
+        RefreshModeBox();
+    }
+
+    private void OnDeleteCustomMode(object sender, RoutedEventArgs e)
+    {
+        var name = (sender as WpfButton)?.Tag as string;
+        var mode = _settings.CustomModes.FirstOrDefault(m => m.Name == name);
+        if (mode is null) return;
+
+        _settings.CustomModes.Remove(mode);
+
+        if (_settings.ActiveModeName == name)
+            _settings.ActiveModeName = CorrectionMode.Defaults[0].Name;
+
+        PopulateCustomModesList();
+        RefreshModeBox();
     }
 
     private void OnToggleKeyVisibility(object sender, RoutedEventArgs e)
