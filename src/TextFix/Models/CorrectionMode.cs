@@ -36,7 +36,7 @@ public record CorrectionMode
         new()
         {
             Name = "Prompt enhancer",
-            SystemPrompt = "You are an expert prompt engineer. Rewrite the following text as a clear, effective AI prompt. Improve specificity, add structure, clarify intent, and include any useful constraints or formatting instructions. Return only the enhanced prompt with no explanation.",
+            SystemPrompt = "You are an expert at writing prompts for AI coding assistants like Claude Code. Take the following rough or lazily written instruction and rewrite it as a clear, specific, well-structured prompt that an AI coder will understand and execute correctly. Clarify intent, add relevant constraints, specify expected output format, and remove ambiguity. Keep the original goal intact. Return only the enhanced prompt with no explanation.",
         },
     ];
 }

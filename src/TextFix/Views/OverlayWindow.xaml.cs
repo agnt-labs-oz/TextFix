@@ -286,6 +286,7 @@ public partial class OverlayWindow : Window
     private void HideImmediate()
     {
         Hide();
+        BeginAnimation(OpacityProperty, null);
         Opacity = 1;
         OverlayHidden?.Invoke();
     }
@@ -297,6 +298,8 @@ public partial class OverlayWindow : Window
         clone.Completed += (_, _) =>
         {
             Hide();
+            // Release the animation hold so Opacity can be set normally again
+            BeginAnimation(OpacityProperty, null);
             Opacity = 1;
             OverlayHidden?.Invoke();
         };
@@ -441,10 +444,11 @@ public partial class OverlayWindow : Window
         var costStr = history.SessionCost > 0 ? $" \u00b7 ${history.SessionCost:F4} session" : "";
         IdleStatsText.Text = $"{history.TodayCount} today \u00b7 {history.TotalCount} total{costStr}";
 
-        RedoOrigButton.IsEnabled = lastResult is not null && !lastResult.IsError;
-        RedoRefineButton.IsEnabled = lastResult is not null && !lastResult.IsError;
-        CopyButton.IsEnabled = lastResult is not null && !lastResult.IsError;
-        PromptPanel.Visibility = Visibility.Visible;
+        var hasResult = lastResult is not null && !lastResult.IsError;
+        RedoOrigButton.IsEnabled = hasResult;
+        RedoRefineButton.IsEnabled = hasResult;
+        CopyButton.IsEnabled = hasResult;
+        PromptPanel.Visibility = hasResult ? Visibility.Visible : Visibility.Collapsed;
         PromptBox.Text = "";
         SaveModePanel.Visibility = Visibility.Collapsed;
 
@@ -507,6 +511,16 @@ public partial class OverlayWindow : Window
             HistoryToggleButton.Foreground = new WpfMedia.SolidColorBrush(
                 WpfMedia.Color.FromRgb(0xAA, 0xAA, 0xAA));
         }
+    }
+
+    private void OnPromptTextChanged(object sender, TextChangedEventArgs e) => UpdatePromptPlaceholder();
+    private void OnPromptFocusChanged(object sender, RoutedEventArgs e) => UpdatePromptPlaceholder();
+
+    private void UpdatePromptPlaceholder()
+    {
+        PromptPlaceholder.Visibility = string.IsNullOrEmpty(PromptBox.Text) && !PromptBox.IsFocused
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void OnPromptKeyDown(object sender, KeyEventArgs e)
