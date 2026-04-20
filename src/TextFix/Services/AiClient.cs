@@ -72,6 +72,8 @@ public class AiClient
             {
                 OriginalText = text,
                 CorrectedText = corrected,
+                InputTokens = (int)(message.Usage?.InputTokens ?? 0),
+                OutputTokens = (int)(message.Usage?.OutputTokens ?? 0),
             };
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
