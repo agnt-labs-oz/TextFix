@@ -56,7 +56,7 @@ public partial class App : Application
         CreateHiddenWindow();
         SetupTrayIcon();
         SetupOverlay();
-        SetupServices();
+        await SetupServicesAsync();
         RegisterHotkey();
 
         // Prompt for API key on first run
@@ -308,12 +308,18 @@ public partial class App : Application
         }
     }
 
-    private void OnSaveModeRequested(string name, string prompt)
+    private async void OnSaveModeRequested(string name, string prompt)
     {
-        // Not yet implemented — custom user-defined modes are a future feature
+        _settings.CustomModes.Add(new CorrectionMode
+        {
+            Name = name,
+            SystemPrompt = prompt,
+        });
+        await _settings.SaveAsync();
+        RebuildModeMenus();
     }
 
-    private void SetupServices()
+    private async Task SetupServicesAsync()
     {
         _clipboardManager = new ClipboardManager();
         _focusTracker = new FocusTracker();
@@ -321,16 +327,18 @@ public partial class App : Application
         if (!string.IsNullOrWhiteSpace(_settings.GetApiKey()))
             _aiClient = new AiClient(_settings);
 
-        _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!, _settings);
+        var history = await CorrectionHistory.LoadAsync();
+        _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!, _settings, history);
 
         _correctionService.ProcessingStarted += () =>
             Dispatcher.Invoke(() => _overlay?.ShowProcessing());
 
         _correctionService.CorrectionCompleted += result =>
-            Dispatcher.Invoke(() =>
+            Dispatcher.Invoke(async () =>
             {
                 _overlay?.ShowResult(result, _settings.OverlayAutoApplySeconds, _settings.KeepOverlayOpen);
                 RefreshHistoryMenu();
+                await _correctionService.History.SaveAsync();
             });
 
         _correctionService.ErrorOccurred += msg =>
@@ -459,6 +467,26 @@ public partial class App : Application
             RebuildServices();
             RegisterHotkey();
             SyncTrayState();
+        }
+    }
+
+    private void RebuildModeMenus()
+    {
+        _overlay?.RefreshModes(_settings.AllModes(), _settings.ActiveModeName);
+
+        if (_trayIcon?.ContextMenuStrip?.Items[0] is ToolStripMenuItem modeMenu)
+        {
+            modeMenu.DropDownItems.Clear();
+            foreach (var mode in _settings.AllModes())
+            {
+                var item = new ToolStripMenuItem(mode.Name)
+                {
+                    Checked = mode.Name == _settings.ActiveModeName,
+                    Tag = mode.Name,
+                };
+                item.Click += OnModeSelected;
+                modeMenu.DropDownItems.Add(item);
+            }
         }
     }
 
