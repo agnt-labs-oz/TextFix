@@ -1,4 +1,5 @@
 // tests/TextFix.Tests/Models/CorrectionHistoryTests.cs
+using System.IO;
 using TextFix.Models;
 
 namespace TextFix.Tests.Models;
@@ -144,5 +145,75 @@ public class CorrectionHistoryTests
 
         Assert.Equal(50, history.Items.Count);
         Assert.Equal(60, history.TotalCount);
+    }
+
+    [Fact]
+    public async Task SaveAndLoad_RoundTripsItems()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"TextFixHistTest_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var path = Path.Combine(dir, "history.json");
+            var history = new CorrectionHistory();
+            history.Add(new CorrectionResult
+            {
+                OriginalText = "a",
+                CorrectedText = "b",
+                ModeName = "Fix errors",
+                InputTokens = 100,
+                OutputTokens = 50,
+            });
+            history.Add(new CorrectionResult
+            {
+                OriginalText = "c",
+                CorrectedText = "d",
+                ModeName = "Professional",
+            });
+
+            await history.SaveAsync(path);
+            var loaded = await CorrectionHistory.LoadAsync(path);
+
+            Assert.Equal(2, loaded.Items.Count);
+            Assert.Equal(2, loaded.TotalCount);
+            Assert.Equal("d", loaded.Items[0].CorrectedText);
+            Assert.Equal("b", loaded.Items[1].CorrectedText);
+            Assert.Equal("Professional", loaded.Items[0].ModeName);
+            Assert.Equal(100, loaded.Items[1].InputTokens);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
+    public async Task LoadAsync_ReturnsEmpty_WhenFileDoesNotExist()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"nonexistent_{Guid.NewGuid():N}.json");
+        var loaded = await CorrectionHistory.LoadAsync(path);
+
+        Assert.Empty(loaded.Items);
+        Assert.Equal(0, loaded.TotalCount);
+    }
+
+    [Fact]
+    public async Task LoadAsync_ReturnsEmpty_WhenFileIsCorrupted()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"TextFixHistTest_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var path = Path.Combine(dir, "bad.json");
+            await File.WriteAllTextAsync(path, "not valid json {{{");
+            var loaded = await CorrectionHistory.LoadAsync(path);
+
+            Assert.Empty(loaded.Items);
+            Assert.Equal(0, loaded.TotalCount);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
     }
 }
