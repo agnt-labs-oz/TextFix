@@ -144,4 +144,78 @@ public class AppSettingsTests : IDisposable
 
         Assert.Equal("Concise", loaded.ActiveModeName);
     }
+
+    [Fact]
+    public void CustomModes_DefaultsToEmpty()
+    {
+        var settings = new AppSettings();
+        Assert.Empty(settings.CustomModes);
+    }
+
+    [Fact]
+    public void GetActiveMode_FindsCustomMode()
+    {
+        var settings = new AppSettings
+        {
+            ActiveModeName = "My Custom",
+            CustomModes =
+            [
+                new CorrectionMode { Name = "My Custom", SystemPrompt = "Do custom stuff" },
+            ],
+        };
+        var mode = settings.GetActiveMode();
+        Assert.Equal("My Custom", mode.Name);
+        Assert.Equal("Do custom stuff", mode.SystemPrompt);
+    }
+
+    [Fact]
+    public void GetActiveMode_DefaultsWin_OverCustom_WhenNameMatchesBoth()
+    {
+        var settings = new AppSettings
+        {
+            ActiveModeName = "Fix errors",
+            CustomModes =
+            [
+                new CorrectionMode { Name = "Fix errors", SystemPrompt = "custom override" },
+            ],
+        };
+        var mode = settings.GetActiveMode();
+        Assert.NotEqual("custom override", mode.SystemPrompt);
+    }
+
+    [Fact]
+    public async Task RoundTrip_PreservesCustomModes()
+    {
+        var original = new AppSettings
+        {
+            CustomModes =
+            [
+                new CorrectionMode { Name = "Sarcastic", SystemPrompt = "Make it sarcastic" },
+                new CorrectionMode { Name = "Pirate", SystemPrompt = "Talk like a pirate" },
+            ],
+        };
+        var path = Path.Combine(_tempDir, "custom_modes.json");
+
+        await original.SaveAsync(path);
+        var loaded = await AppSettings.LoadAsync(path);
+
+        Assert.Equal(2, loaded.CustomModes.Count);
+        Assert.Equal("Sarcastic", loaded.CustomModes[0].Name);
+        Assert.Equal("Talk like a pirate", loaded.CustomModes[1].SystemPrompt);
+    }
+
+    [Fact]
+    public void AllModes_ReturnsBothDefaultsAndCustom()
+    {
+        var settings = new AppSettings
+        {
+            CustomModes =
+            [
+                new CorrectionMode { Name = "Custom1", SystemPrompt = "test" },
+            ],
+        };
+        var all = settings.AllModes();
+        Assert.Equal(CorrectionMode.Defaults.Count + 1, all.Count);
+        Assert.Equal("Custom1", all[^1].Name);
+    }
 }

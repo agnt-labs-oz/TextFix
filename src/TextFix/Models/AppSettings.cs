@@ -33,10 +33,20 @@ public class AppSettings
 
     public string ActiveModeName { get; set; } = "Fix errors";
 
+    public List<CorrectionMode> CustomModes { get; set; } = [];
+
     public CorrectionMode GetActiveMode()
     {
         return CorrectionMode.Defaults.FirstOrDefault(m => m.Name == ActiveModeName)
+            ?? CustomModes.FirstOrDefault(m => m.Name == ActiveModeName)
             ?? CorrectionMode.Defaults[0];
+    }
+
+    public IReadOnlyList<CorrectionMode> AllModes()
+    {
+        var list = new List<CorrectionMode>(CorrectionMode.Defaults);
+        list.AddRange(CustomModes);
+        return list;
     }
 
     [JsonIgnore]
