@@ -302,42 +302,6 @@
                 </ScrollViewer>
             </StackPanel>
 
-            <!-- Custom prompt box -->
-            <DockPanel x:Name="PromptPanel" Visibility="Collapsed" Margin="0,8,0,0">
-                <Button x:Name="PromptGoButton" Content="Go" DockPanel.Dock="Right"
-                        Background="#6C63FF" Foreground="White" Margin="4,0,0,0"
-                        Style="{StaticResource SmallActionButton}" Click="OnPromptGo"/>
-                <Grid>
-                    <TextBox x:Name="PromptBox"
-                             Background="#2A2A3E" Foreground="#E0E0E0" BorderBrush="#555"
-                             CaretBrush="#E0E0E0" FontFamily="Segoe UI" FontSize="11"
-                             Padding="6,3" VerticalAlignment="Center"
-                             KeyDown="OnPromptKeyDown"
-                             TextChanged="OnPromptTextChanged"
-                             GotFocus="OnPromptFocusChanged"
-                             LostFocus="OnPromptFocusChanged"/>
-                    <TextBlock x:Name="PromptPlaceholder"
-                               Text="Try a custom prompt..."
-                               Foreground="#666666" FontFamily="Segoe UI" FontSize="11"
-                               Padding="8,4" VerticalAlignment="Center"
-                               IsHitTestVisible="False"/>
-                </Grid>
-            </DockPanel>
-
-            <!-- Save as mode (shown after custom prompt success) -->
-            <StackPanel x:Name="SaveModePanel" Orientation="Horizontal"
-                        Visibility="Collapsed" Margin="0,4,0,0">
-                <TextBlock x:Name="SaveModeLink" Text="Save as mode..."
-                           Foreground="#6C63FF" FontSize="11" FontFamily="Segoe UI"
-                           Cursor="Hand" VerticalAlignment="Center"
-                           MouseLeftButtonDown="OnSaveModeClick"/>
-                <TextBox x:Name="SaveModeNameBox" Visibility="Collapsed"
-                         Background="#2A2A3E" Foreground="#E0E0E0" BorderBrush="#555"
-                         CaretBrush="#E0E0E0" FontFamily="Segoe UI" FontSize="11"
-                         Padding="6,3" Width="140" Margin="4,0,0,0"
-                         KeyDown="OnSaveModeNameKeyDown"/>
-            </StackPanel>
-
             <!-- Action row: redo original, redo refine, copy, history -->
             <StackPanel x:Name="ActionRowPanel" Orientation="Horizontal"
                         Visibility="Collapsed" Margin="0,8,0,0">

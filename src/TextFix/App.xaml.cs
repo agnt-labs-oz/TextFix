@@ -101,7 +101,7 @@ public partial class App : Application
 
         // Mode submenu
         var modeMenu = new ToolStripMenuItem("Mode");
-        foreach (var mode in CorrectionMode.Defaults)
+        foreach (var mode in _settings.AllModes())
         {
             var item = new ToolStripMenuItem(mode.Name)
             {
@@ -185,8 +185,6 @@ public partial class App : Application
         _overlay.OverlayHidden += OnOverlayHidden;
         _overlay.CopyRequested += OnCopyRequested;
         _overlay.ReapplyRequested += OnReapplyRequested;
-        _overlay.CustomPromptRequested += OnCustomPromptRequested;
-        _overlay.SaveModeRequested += OnSaveModeRequested;
         _overlay.SetActiveMode(_settings.ActiveModeName);
     }
 
@@ -281,42 +279,6 @@ public partial class App : Application
         {
             Interlocked.Exchange(ref _isBusy, 0);
         }
-    }
-
-    private async void OnCustomPromptRequested(string text, string prompt)
-    {
-        if (Interlocked.CompareExchange(ref _isBusy, 1, 0) != 0) return;
-        try
-        {
-            if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
-            {
-                _overlay?.ShowProcessing();
-                _overlay?.ShowResult(CorrectionResult.Error(text, "Set up your API key in Settings."), 0);
-                return;
-            }
-            await _correctionService!.ReapplyWithPromptAsync(text, prompt);
-        }
-        catch (Exception ex)
-        {
-            LogError(ex);
-            _overlay?.ShowProcessing();
-            _overlay?.ShowResult(CorrectionResult.Error(text, "An unexpected error occurred."), 0);
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _isBusy, 0);
-        }
-    }
-
-    private async void OnSaveModeRequested(string name, string prompt)
-    {
-        _settings.CustomModes.Add(new CorrectionMode
-        {
-            Name = name,
-            SystemPrompt = prompt,
-        });
-        await _settings.SaveAsync();
-        RebuildModeMenus();
     }
 
     private async Task SetupServicesAsync()
@@ -428,14 +390,10 @@ public partial class App : Application
             await _correctionService.ApplyCorrectionAsync(_correctionService.LastResult);
             LogDebug("ApplyCorrectionAsync done");
 
-            if (_settings.KeepOverlayOpen)
-            {
-                if (_correctionService is not null)
-                    _overlay?.SetHistory(_correctionService.History);
-                _overlay?.ShowApplied();
-            }
-            else
-                _overlay?.FadeOutAndHide();
+            // Always show applied state — unified dialog with diff, mode selector, redo
+            if (_correctionService is not null)
+                _overlay?.SetHistory(_correctionService.History);
+            _overlay?.ShowApplied();
         }
         else
         {

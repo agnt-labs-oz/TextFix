@@ -23,7 +23,6 @@ public partial class OverlayWindow : Window
     private bool _showingIdle;
     private bool _historyVisible;
     private CorrectionHistory? _history;
-    private string? _lastCustomPrompt;
 
     public event Action<bool>? UserResponded;
     public event Action? RetryRequested;
@@ -32,8 +31,6 @@ public partial class OverlayWindow : Window
     public event Action<string>? ModeChanged;
     public event Action? OverlayHidden;
     public event Action<string>? ReapplyRequested;      // text to reapply
-    public event Action<string, string>? CustomPromptRequested; // text, prompt
-    public event Action<string, string>? SaveModeRequested;     // name, prompt
 
     public OverlayWindow()
     {
@@ -91,8 +88,6 @@ public partial class OverlayWindow : Window
         IdlePanel.Visibility = Visibility.Collapsed;
         HistoryPanel.Visibility = Visibility.Collapsed;
         ActionRowPanel.Visibility = Visibility.Collapsed;
-        PromptPanel.Visibility = Visibility.Collapsed;
-        SaveModePanel.Visibility = Visibility.Collapsed;
 
         StartSpinnerAnimation();
         Show();
@@ -149,15 +144,16 @@ public partial class OverlayWindow : Window
         ErrorPanel.Visibility = Visibility.Collapsed;
         InfoPanel.Visibility = Visibility.Collapsed;
 
+        // Restore Apply/Cancel in case ShowApplied hid them
+        ApplyButton.Visibility = Visibility.Visible;
+        CancelButton.Visibility = Visibility.Visible;
+
         UpdatePinIcon();
 
         var changeCount = CountChanges(result.OriginalText, result.CorrectedText);
         StatusText.Text = $"Fixed {changeCount} error{(changeCount == 1 ? "" : "s")}";
         OriginalText.Text = result.OriginalText;
         CorrectedText.Text = result.CorrectedText;
-        PromptPanel.Visibility = Visibility.Visible;
-        PromptBox.Text = "";
-        SaveModePanel.Visibility = Visibility.Collapsed;
 
         Activate();
         Focus();
@@ -174,23 +170,27 @@ public partial class OverlayWindow : Window
         Opacity = 1;
         StopAutoApply();
         ProcessingPanel.Visibility = Visibility.Collapsed;
-        ResultPanel.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
         IdlePanel.Visibility = Visibility.Collapsed;
-        InfoPanel.Visibility = Visibility.Visible;
+        InfoPanel.Visibility = Visibility.Collapsed;
+
+        // Keep ResultPanel visible — unified dialog with diff, mode selector, action row
+        ResultPanel.Visibility = Visibility.Visible;
         ActionRowPanel.Visibility = Visibility.Visible;
-        InfoIcon.Text = "\u2713";
-        InfoIcon.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x4A, 0xDE, 0x80));
-        InfoText.Text = "Applied!";
-        InfoHint.Visibility = Visibility.Collapsed;
+
+        // Update status to "Applied!" but keep the diff text visible
+        StatusIcon.Text = "\u2713";
+        StatusIcon.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x4A, 0xDE, 0x80));
+        StatusText.Text = "Applied!";
+
+        // Hide Apply/Cancel since already applied, keep mode selector and action row
+        ApplyButton.Visibility = Visibility.Collapsed;
+        CancelButton.Visibility = Visibility.Collapsed;
+        CountdownText.Visibility = Visibility.Collapsed;
 
         RedoOrigButton.IsEnabled = true;
         RedoRefineButton.IsEnabled = true;
         CopyButton.IsEnabled = true;
-        PromptPanel.Visibility = Visibility.Visible;
-        PromptBox.Text = "";
-        if (_lastCustomPrompt is not null)
-            SaveModePanel.Visibility = Visibility.Visible;
 
         Activate();
         Focus();
@@ -208,8 +208,6 @@ public partial class OverlayWindow : Window
         IdlePanel.Visibility = Visibility.Collapsed;
         ActionRowPanel.Visibility = Visibility.Collapsed;
         HistoryPanel.Visibility = Visibility.Collapsed;
-        PromptPanel.Visibility = Visibility.Collapsed;
-        SaveModePanel.Visibility = Visibility.Collapsed;
         InfoPanel.Visibility = Visibility.Visible;
         InfoText.Text = "Focus changed \u2014 Ctrl+V to paste";
         InfoHint.Visibility = Visibility.Collapsed;
@@ -273,8 +271,8 @@ public partial class OverlayWindow : Window
         if (ModeBox.SelectedItem is ComboBoxItem item)
         {
             ModeChanged?.Invoke((string)item.Tag);
-            // If in result view, trigger re-run from original text
-            if (!_showingError && !_showingApplied && !_showingIdle && _currentResult is not null)
+            // If in result or applied view, trigger re-run from original text
+            if (!_showingError && !_showingIdle && _currentResult is not null)
             {
                 ReapplyRequested?.Invoke(_currentResult.OriginalText);
             }
@@ -335,9 +333,6 @@ public partial class OverlayWindow : Window
 
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
-        if (PromptBox.IsFocused || SaveModeNameBox.IsFocused)
-            return;
-
         if (e.Key == Key.Enter || e.Key == Key.Return)
         {
             StopAutoApply();
@@ -448,9 +443,6 @@ public partial class OverlayWindow : Window
         RedoOrigButton.IsEnabled = hasResult;
         RedoRefineButton.IsEnabled = hasResult;
         CopyButton.IsEnabled = hasResult;
-        PromptPanel.Visibility = hasResult ? Visibility.Visible : Visibility.Collapsed;
-        PromptBox.Text = "";
-        SaveModePanel.Visibility = Visibility.Collapsed;
 
         Show();
         PositionNearTray();
@@ -510,75 +502,6 @@ public partial class OverlayWindow : Window
                 WpfMedia.Color.FromRgb(0x2A, 0x2A, 0x3E));
             HistoryToggleButton.Foreground = new WpfMedia.SolidColorBrush(
                 WpfMedia.Color.FromRgb(0xAA, 0xAA, 0xAA));
-        }
-    }
-
-    private void OnPromptTextChanged(object sender, TextChangedEventArgs e) => UpdatePromptPlaceholder();
-    private void OnPromptFocusChanged(object sender, RoutedEventArgs e) => UpdatePromptPlaceholder();
-
-    private void UpdatePromptPlaceholder()
-    {
-        PromptPlaceholder.Visibility = string.IsNullOrEmpty(PromptBox.Text) && !PromptBox.IsFocused
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-    }
-
-    private void OnPromptKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && !string.IsNullOrWhiteSpace(PromptBox.Text))
-        {
-            e.Handled = true;
-            SubmitCustomPrompt();
-        }
-    }
-
-    private void OnPromptGo(object sender, RoutedEventArgs e)
-    {
-        if (!string.IsNullOrWhiteSpace(PromptBox.Text))
-            SubmitCustomPrompt();
-    }
-
-    private void SubmitCustomPrompt()
-    {
-        var prompt = PromptBox.Text.Trim();
-        _lastCustomPrompt = prompt;
-        SaveModePanel.Visibility = Visibility.Collapsed;
-
-        string? text = null;
-        if (_currentResult is not null)
-        {
-            text = (_showingApplied || _showingIdle)
-                ? _currentResult.CorrectedText
-                : _currentResult.OriginalText;
-        }
-
-        if (text is not null)
-            CustomPromptRequested?.Invoke(text, prompt);
-    }
-
-    private void OnSaveModeClick(object sender, MouseButtonEventArgs e)
-    {
-        SaveModeLink.Visibility = Visibility.Collapsed;
-        SaveModeNameBox.Visibility = Visibility.Visible;
-        SaveModeNameBox.Text = "";
-        SaveModeNameBox.Focus();
-    }
-
-    private void OnSaveModeNameKeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && !string.IsNullOrWhiteSpace(SaveModeNameBox.Text) && _lastCustomPrompt is not null)
-        {
-            e.Handled = true;
-            SaveModeRequested?.Invoke(SaveModeNameBox.Text.Trim(), _lastCustomPrompt);
-            SaveModePanel.Visibility = Visibility.Collapsed;
-            SaveModeNameBox.Visibility = Visibility.Collapsed;
-            SaveModeLink.Visibility = Visibility.Visible;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            e.Handled = true;
-            SaveModeNameBox.Visibility = Visibility.Collapsed;
-            SaveModeLink.Visibility = Visibility.Visible;
         }
     }
 
