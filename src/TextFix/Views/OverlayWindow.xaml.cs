@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -22,6 +23,7 @@ public partial class OverlayWindow : Window
     private bool _showingIdle;
     private bool _historyVisible;
     private CorrectionHistory? _history;
+    private string? _lastCustomPrompt;
 
     public event Action<bool>? UserResponded;
     public event Action? RetryRequested;
@@ -29,6 +31,9 @@ public partial class OverlayWindow : Window
     public event Action<bool>? KeepOpenChanged;
     public event Action<string>? ModeChanged;
     public event Action? OverlayHidden;
+    public event Action<string>? ReapplyRequested;      // text to reapply
+    public event Action<string, string>? CustomPromptRequested; // text, prompt
+    public event Action<string, string>? SaveModeRequested;     // name, prompt
 
     public OverlayWindow()
     {
@@ -37,15 +42,22 @@ public partial class OverlayWindow : Window
         PopulateModes();
     }
 
-    private void PopulateModes()
+    private void PopulateModes(IReadOnlyList<CorrectionMode>? allModes = null)
     {
         _suppressModeChange = true;
         ModeBox.Items.Clear();
-        foreach (var mode in CorrectionMode.Defaults)
+        var modes = allModes ?? CorrectionMode.Defaults;
+        foreach (var mode in modes)
         {
             ModeBox.Items.Add(new ComboBoxItem { Content = mode.Name, Tag = mode.Name });
         }
         _suppressModeChange = false;
+    }
+
+    public void RefreshModes(IReadOnlyList<CorrectionMode> allModes, string activeName)
+    {
+        PopulateModes(allModes);
+        SetActiveMode(activeName);
     }
 
     public void SetActiveMode(string modeName)
@@ -79,6 +91,8 @@ public partial class OverlayWindow : Window
         IdlePanel.Visibility = Visibility.Collapsed;
         HistoryPanel.Visibility = Visibility.Collapsed;
         ActionRowPanel.Visibility = Visibility.Collapsed;
+        PromptPanel.Visibility = Visibility.Collapsed;
+        SaveModePanel.Visibility = Visibility.Collapsed;
 
         StartSpinnerAnimation();
         Show();
@@ -141,6 +155,9 @@ public partial class OverlayWindow : Window
         StatusText.Text = $"Fixed {changeCount} error{(changeCount == 1 ? "" : "s")}";
         OriginalText.Text = result.OriginalText;
         CorrectedText.Text = result.CorrectedText;
+        PromptPanel.Visibility = Visibility.Visible;
+        PromptBox.Text = "";
+        SaveModePanel.Visibility = Visibility.Collapsed;
 
         Activate();
         Focus();
@@ -167,8 +184,13 @@ public partial class OverlayWindow : Window
         InfoText.Text = "Applied!";
         InfoHint.Visibility = Visibility.Collapsed;
 
-        RedoButton.IsEnabled = true;
+        RedoOrigButton.IsEnabled = true;
+        RedoRefineButton.IsEnabled = true;
         CopyButton.IsEnabled = true;
+        PromptPanel.Visibility = Visibility.Visible;
+        PromptBox.Text = "";
+        if (_lastCustomPrompt is not null)
+            SaveModePanel.Visibility = Visibility.Visible;
 
         Activate();
         Focus();
@@ -186,6 +208,8 @@ public partial class OverlayWindow : Window
         IdlePanel.Visibility = Visibility.Collapsed;
         ActionRowPanel.Visibility = Visibility.Collapsed;
         HistoryPanel.Visibility = Visibility.Collapsed;
+        PromptPanel.Visibility = Visibility.Collapsed;
+        SaveModePanel.Visibility = Visibility.Collapsed;
         InfoPanel.Visibility = Visibility.Visible;
         InfoText.Text = "Focus changed \u2014 Ctrl+V to paste";
         InfoHint.Visibility = Visibility.Collapsed;
@@ -247,7 +271,14 @@ public partial class OverlayWindow : Window
     {
         if (_suppressModeChange) return;
         if (ModeBox.SelectedItem is ComboBoxItem item)
+        {
             ModeChanged?.Invoke((string)item.Tag);
+            // If in result view, trigger re-run from original text
+            if (!_showingError && !_showingApplied && !_showingIdle && _currentResult is not null)
+            {
+                ReapplyRequested?.Invoke(_currentResult.OriginalText);
+            }
+        }
     }
 
     // --- End button handlers ---
@@ -301,6 +332,9 @@ public partial class OverlayWindow : Window
 
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
+        if (PromptBox.IsFocused || SaveModeNameBox.IsFocused)
+            return;
+
         if (e.Key == Key.Enter || e.Key == Key.Return)
         {
             StopAutoApply();
@@ -404,10 +438,15 @@ public partial class OverlayWindow : Window
         IdlePanel.Visibility = Visibility.Visible;
         ActionRowPanel.Visibility = Visibility.Visible;
 
-        IdleStatsText.Text = $"{history.TodayCount} today \u00b7 {history.TotalCount} total";
+        var costStr = history.SessionCost > 0 ? $" \u00b7 ${history.SessionCost:F4} session" : "";
+        IdleStatsText.Text = $"{history.TodayCount} today \u00b7 {history.TotalCount} total{costStr}";
 
-        RedoButton.IsEnabled = lastResult is not null && !lastResult.IsError;
+        RedoOrigButton.IsEnabled = lastResult is not null && !lastResult.IsError;
+        RedoRefineButton.IsEnabled = lastResult is not null && !lastResult.IsError;
         CopyButton.IsEnabled = lastResult is not null && !lastResult.IsError;
+        PromptPanel.Visibility = Visibility.Visible;
+        PromptBox.Text = "";
+        SaveModePanel.Visibility = Visibility.Collapsed;
 
         Show();
         PositionNearTray();
@@ -426,12 +465,20 @@ public partial class OverlayWindow : Window
         }, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
-    private void OnActionRedo(object sender, RoutedEventArgs e)
+    private void OnActionRedoOriginal(object sender, RoutedEventArgs e)
     {
         _historyVisible = false;
         HistoryPanel.Visibility = Visibility.Collapsed;
-        HideImmediate();
-        RetryRequested?.Invoke();
+        if (_currentResult is not null)
+            ReapplyRequested?.Invoke(_currentResult.OriginalText);
+    }
+
+    private void OnActionRedoRefine(object sender, RoutedEventArgs e)
+    {
+        _historyVisible = false;
+        HistoryPanel.Visibility = Visibility.Collapsed;
+        if (_currentResult is not null)
+            ReapplyRequested?.Invoke(_currentResult.CorrectedText);
     }
 
     private void OnActionCopy(object sender, RoutedEventArgs e)
@@ -462,6 +509,65 @@ public partial class OverlayWindow : Window
         }
     }
 
+    private void OnPromptKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && !string.IsNullOrWhiteSpace(PromptBox.Text))
+        {
+            e.Handled = true;
+            SubmitCustomPrompt();
+        }
+    }
+
+    private void OnPromptGo(object sender, RoutedEventArgs e)
+    {
+        if (!string.IsNullOrWhiteSpace(PromptBox.Text))
+            SubmitCustomPrompt();
+    }
+
+    private void SubmitCustomPrompt()
+    {
+        var prompt = PromptBox.Text.Trim();
+        _lastCustomPrompt = prompt;
+        SaveModePanel.Visibility = Visibility.Collapsed;
+
+        string? text = null;
+        if (_currentResult is not null)
+        {
+            text = (_showingApplied || _showingIdle)
+                ? _currentResult.CorrectedText
+                : _currentResult.OriginalText;
+        }
+
+        if (text is not null)
+            CustomPromptRequested?.Invoke(text, prompt);
+    }
+
+    private void OnSaveModeClick(object sender, MouseButtonEventArgs e)
+    {
+        SaveModeLink.Visibility = Visibility.Collapsed;
+        SaveModeNameBox.Visibility = Visibility.Visible;
+        SaveModeNameBox.Text = "";
+        SaveModeNameBox.Focus();
+    }
+
+    private void OnSaveModeNameKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && !string.IsNullOrWhiteSpace(SaveModeNameBox.Text) && _lastCustomPrompt is not null)
+        {
+            e.Handled = true;
+            SaveModeRequested?.Invoke(SaveModeNameBox.Text.Trim(), _lastCustomPrompt);
+            SaveModePanel.Visibility = Visibility.Collapsed;
+            SaveModeNameBox.Visibility = Visibility.Collapsed;
+            SaveModeLink.Visibility = Visibility.Visible;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            e.Handled = true;
+            SaveModeNameBox.Visibility = Visibility.Collapsed;
+            SaveModeLink.Visibility = Visibility.Visible;
+        }
+    }
+
     private void PopulateHistoryPanel()
     {
         HistoryList.Children.Clear();
@@ -479,7 +585,8 @@ public partial class OverlayWindow : Window
             return;
         }
 
-        HistoryStatsText.Text = $"{_history.TodayCount} today \u00b7 {_history.TotalCount} total";
+        var costStr = _history.SessionCost > 0 ? $" \u00b7 ${_history.SessionCost:F4} session" : "";
+        HistoryStatsText.Text = $"{_history.TodayCount} today \u00b7 {_history.TotalCount} total{costStr}";
 
         foreach (var item in _history.Items)
         {
@@ -487,9 +594,11 @@ public partial class OverlayWindow : Window
                 ? item.CorrectedText[..60] + "\u2026"
                 : item.CorrectedText;
             var age = FormatAge(item.Timestamp);
+            var tokens = item.InputTokens + item.OutputTokens;
+            var tokenStr = tokens > 0 ? $" \u00b7 {tokens} tokens" : "";
             var modeLine = string.IsNullOrEmpty(item.ModeName)
-                ? age
-                : $"{item.ModeName} \u00b7 {age}";
+                ? $"{age}{tokenStr}"
+                : $"{item.ModeName} \u00b7 {age}{tokenStr}";
 
             var panel = new StackPanel
             {

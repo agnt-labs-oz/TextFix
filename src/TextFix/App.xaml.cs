@@ -184,6 +184,9 @@ public partial class App : Application
         _overlay.ModeChanged += OnOverlayModeChanged;
         _overlay.OverlayHidden += OnOverlayHidden;
         _overlay.CopyRequested += OnCopyRequested;
+        _overlay.ReapplyRequested += OnReapplyRequested;
+        _overlay.CustomPromptRequested += OnCustomPromptRequested;
+        _overlay.SaveModeRequested += OnSaveModeRequested;
         _overlay.SetActiveMode(_settings.ActiveModeName);
     }
 
@@ -253,6 +256,61 @@ public partial class App : Application
         {
             Interlocked.Exchange(ref _isBusy, 0);
         }
+    }
+
+    private async void OnReapplyRequested(string text)
+    {
+        if (Interlocked.CompareExchange(ref _isBusy, 1, 0) != 0) return;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+            {
+                _overlay?.ShowProcessing();
+                _overlay?.ShowResult(CorrectionResult.Error(text, "Set up your API key in Settings."), 0);
+                return;
+            }
+            await _correctionService!.ReapplyAsync(text);
+        }
+        catch (Exception ex)
+        {
+            LogError(ex);
+            _overlay?.ShowProcessing();
+            _overlay?.ShowResult(CorrectionResult.Error(text, "An unexpected error occurred."), 0);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isBusy, 0);
+        }
+    }
+
+    private async void OnCustomPromptRequested(string text, string prompt)
+    {
+        if (Interlocked.CompareExchange(ref _isBusy, 1, 0) != 0) return;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+            {
+                _overlay?.ShowProcessing();
+                _overlay?.ShowResult(CorrectionResult.Error(text, "Set up your API key in Settings."), 0);
+                return;
+            }
+            await _correctionService!.ReapplyWithPromptAsync(text, prompt);
+        }
+        catch (Exception ex)
+        {
+            LogError(ex);
+            _overlay?.ShowProcessing();
+            _overlay?.ShowResult(CorrectionResult.Error(text, "An unexpected error occurred."), 0);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isBusy, 0);
+        }
+    }
+
+    private void OnSaveModeRequested(string name, string prompt)
+    {
+        // Not yet implemented — custom user-defined modes are a future feature
     }
 
     private void SetupServices()
