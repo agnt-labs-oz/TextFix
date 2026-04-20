@@ -33,10 +33,10 @@ public class CorrectionHistoryTests
     }
 
     [Fact]
-    public void Add_CapsAt10()
+    public void Add_CapsAt50()
     {
         var history = new CorrectionHistory();
-        for (int i = 0; i < 15; i++)
+        for (int i = 0; i < 55; i++)
         {
             history.Add(new CorrectionResult
             {
@@ -45,9 +45,9 @@ public class CorrectionHistoryTests
             });
         }
 
-        Assert.Equal(10, history.Items.Count);
-        Assert.Equal("fixed14", history.Items[0].CorrectedText);
-        Assert.Equal("fixed5", history.Items[9].CorrectedText);
+        Assert.Equal(50, history.Items.Count);
+        Assert.Equal("fixed54", history.Items[0].CorrectedText);
+        Assert.Equal("fixed5", history.Items[49].CorrectedText);
     }
 
     [Fact]
@@ -86,11 +86,11 @@ public class CorrectionHistoryTests
     public void TotalCount_CountsEvictedItems()
     {
         var history = new CorrectionHistory();
-        for (int i = 0; i < 15; i++)
+        for (int i = 0; i < 55; i++)
             history.Add(new CorrectionResult { OriginalText = $"a{i}", CorrectedText = $"b{i}" });
 
-        Assert.Equal(10, history.Items.Count);
-        Assert.Equal(15, history.TotalCount);
+        Assert.Equal(50, history.Items.Count);
+        Assert.Equal(55, history.TotalCount);
     }
 
     [Fact]
@@ -118,5 +118,31 @@ public class CorrectionHistoryTests
 
         Assert.Equal(1, history.TodayCount);
         Assert.Equal(2, history.TotalCount);
+    }
+
+    [Fact]
+    public void SessionCost_SumsTokenCosts()
+    {
+        var history = new CorrectionHistory();
+        history.Add(new CorrectionResult
+        {
+            OriginalText = "a",
+            CorrectedText = "b",
+            InputTokens = 1000,
+            OutputTokens = 500,
+            ModeName = "Fix errors",
+        });
+        Assert.True(history.SessionCost > 0);
+    }
+
+    [Fact]
+    public void MaxItems_Is50()
+    {
+        var history = new CorrectionHistory();
+        for (int i = 0; i < 60; i++)
+            history.Add(new CorrectionResult { OriginalText = $"a{i}", CorrectedText = $"b{i}" });
+
+        Assert.Equal(50, history.Items.Count);
+        Assert.Equal(60, history.TotalCount);
     }
 }

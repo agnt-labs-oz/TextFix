@@ -3,10 +3,15 @@ namespace TextFix.Models;
 public class CorrectionHistory
 {
     private readonly List<CorrectionResult> _items = [];
-    private const int MaxItems = 10;
+    private const int MaxItems = 50;
+
+    // Haiku pricing: $0.80/M input, $4.00/M output
+    private const decimal InputCostPerToken = 0.80m / 1_000_000m;
+    private const decimal OutputCostPerToken = 4.00m / 1_000_000m;
 
     public IReadOnlyList<CorrectionResult> Items => _items;
-    public int TotalCount { get; private set; }
+    public int TotalCount { get; set; }
+    public decimal SessionCost { get; private set; }
 
     public int TodayCount
     {
@@ -29,6 +34,9 @@ public class CorrectionHistory
             return;
 
         TotalCount++;
+        SessionCost += result.InputTokens * InputCostPerToken
+                     + result.OutputTokens * OutputCostPerToken;
+
         _items.Insert(0, result);
 
         if (_items.Count > MaxItems)
