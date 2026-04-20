@@ -7,19 +7,20 @@ public class CorrectionService
     private readonly ClipboardManager _clipboard;
     private readonly FocusTracker _focusTracker;
     private readonly AppSettings _settings;
-    private readonly CorrectionHistory _history = new();
+    private readonly CorrectionHistory _history;
     private AiClient _aiClient;
     private CancellationTokenSource? _cts;
 
     public CorrectionResult? LastResult { get; private set; }
     public CorrectionHistory History => _history;
 
-    public CorrectionService(ClipboardManager clipboard, FocusTracker focusTracker, AiClient aiClient, AppSettings settings)
+    public CorrectionService(ClipboardManager clipboard, FocusTracker focusTracker, AiClient aiClient, AppSettings settings, CorrectionHistory? history = null)
     {
         _clipboard = clipboard;
         _focusTracker = focusTracker;
         _aiClient = aiClient;
         _settings = settings;
+        _history = history ?? new CorrectionHistory();
     }
 
     public void UpdateAiClient(AiClient aiClient) => _aiClient = aiClient;
@@ -49,6 +50,43 @@ public class CorrectionService
         var mode = _settings.GetActiveMode();
         var result = await _aiClient.CorrectAsync(selectedText, mode.SystemPrompt, _cts.Token);
         result = result with { ModeName = mode.Name };
+
+        if (_cts.Token.IsCancellationRequested)
+            return;
+
+        LastResult = result;
+        _history.Add(result);
+        CorrectionCompleted?.Invoke(result);
+    }
+
+    public async Task ReapplyAsync(string text)
+    {
+        Cancel();
+        _cts = new CancellationTokenSource();
+
+        ProcessingStarted?.Invoke();
+
+        var mode = _settings.GetActiveMode();
+        var result = await _aiClient.CorrectAsync(text, mode.SystemPrompt, _cts.Token);
+        result = result with { ModeName = mode.Name };
+
+        if (_cts.Token.IsCancellationRequested)
+            return;
+
+        LastResult = result;
+        _history.Add(result);
+        CorrectionCompleted?.Invoke(result);
+    }
+
+    public async Task ReapplyWithPromptAsync(string text, string customPrompt)
+    {
+        Cancel();
+        _cts = new CancellationTokenSource();
+
+        ProcessingStarted?.Invoke();
+
+        var result = await _aiClient.CorrectAsync(text, customPrompt, _cts.Token);
+        result = result with { ModeName = "Custom" };
 
         if (_cts.Token.IsCancellationRequested)
             return;
