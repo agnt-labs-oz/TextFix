@@ -235,7 +235,7 @@ public partial class App : Application
         {
             if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
             {
-                _overlay?.ShowProcessing();
+                _overlay?.ShowProcessing(_settings.ActiveModeName);
                 _overlay?.ShowResult(
                     CorrectionResult.Error("", "Set up your API key in Settings."),
                     0);
@@ -247,7 +247,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             LogError(ex);
-            _overlay?.ShowProcessing();
+            _overlay?.ShowProcessing(_settings.ActiveModeName);
             _overlay?.ShowResult(CorrectionResult.Error("", "An unexpected error occurred."), 0);
         }
         finally
@@ -263,7 +263,7 @@ public partial class App : Application
         {
             if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
             {
-                _overlay?.ShowProcessing();
+                _overlay?.ShowProcessing(_settings.ActiveModeName);
                 _overlay?.ShowResult(CorrectionResult.Error(text, "Set up your API key in Settings."), 0);
                 return;
             }
@@ -272,7 +272,7 @@ public partial class App : Application
         catch (Exception ex)
         {
             LogError(ex);
-            _overlay?.ShowProcessing();
+            _overlay?.ShowProcessing(_settings.ActiveModeName);
             _overlay?.ShowResult(CorrectionResult.Error(text, "An unexpected error occurred."), 0);
         }
         finally
@@ -293,12 +293,13 @@ public partial class App : Application
         _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!, _settings, history);
 
         _correctionService.ProcessingStarted += () =>
-            Dispatcher.Invoke(() => _overlay?.ShowProcessing());
+            Dispatcher.Invoke(() => _overlay?.ShowProcessing(_settings.ActiveModeName));
 
         _correctionService.CorrectionCompleted += result =>
             Dispatcher.Invoke(async () =>
             {
-                _overlay?.ShowResult(result, _settings.OverlayAutoApplySeconds, _settings.KeepOverlayOpen);
+                var autoApply = _settings.ManualApplyOnly ? 0 : _settings.OverlayAutoApplySeconds;
+                _overlay?.ShowResult(result, autoApply, _settings.KeepOverlayOpen, _settings.ManualApplyOnly);
                 RefreshHistoryMenu();
                 await _correctionService.History.SaveAsync();
             });
@@ -306,7 +307,7 @@ public partial class App : Application
         _correctionService.ErrorOccurred += msg =>
             Dispatcher.Invoke(() =>
             {
-                _overlay?.ShowProcessing();
+                _overlay?.ShowProcessing(_settings.ActiveModeName);
                 _overlay?.ShowResult(CorrectionResult.Error("", msg), 0);
             });
 
@@ -354,7 +355,7 @@ public partial class App : Application
             if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
             {
                 LogDebug("No API key configured");
-                _overlay?.ShowProcessing();
+                _overlay?.ShowProcessing(_settings.ActiveModeName);
                 _overlay?.ShowResult(
                     CorrectionResult.Error("", "Set up your API key in Settings."),
                     0);
@@ -369,7 +370,7 @@ public partial class App : Application
         {
             LogError(ex);
             LogDebug($"Hotkey handler exception: {ex.Message}");
-            _overlay?.ShowProcessing();
+            _overlay?.ShowProcessing(_settings.ActiveModeName);
             _overlay?.ShowResult(CorrectionResult.Error("", "An unexpected error occurred."), 0);
         }
         finally
@@ -386,8 +387,16 @@ public partial class App : Application
 
         if (apply && _correctionService.LastResult is not null)
         {
+            // If user edited the text in manual mode, apply their edit rather than the original AI output.
+            // TrimEnd comparison so a stray trailing newline from AcceptsReturn doesn't count as an edit.
+            var edited = _overlay?.GetEditedText();
+            var original = _correctionService.LastResult.CorrectedText;
+            var resultToApply = edited is not null && edited.TrimEnd() != original.TrimEnd()
+                ? _correctionService.LastResult with { CorrectedText = edited }
+                : _correctionService.LastResult;
+
             LogDebug("Applying correction");
-            await _correctionService.ApplyCorrectionAsync(_correctionService.LastResult);
+            await _correctionService.ApplyCorrectionAsync(resultToApply);
             LogDebug("ApplyCorrectionAsync done");
 
             // Always show applied state — unified dialog with diff, mode selector, redo

@@ -29,6 +29,7 @@ public class AppSettings
 
     public int OverlayAutoApplySeconds { get; set; } = 3;
     public bool KeepOverlayOpen { get; set; }
+    public bool ManualApplyOnly { get; set; }
     public bool StartWithWindows { get; set; }
 
     public string ActiveModeName { get; set; } = "Fix errors";

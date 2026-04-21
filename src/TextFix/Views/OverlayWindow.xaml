@@ -181,7 +181,7 @@
     <Border x:Name="MainBorder" Style="{StaticResource PillBorder}" MaxWidth="420"
             MouseLeftButtonDown="OnDragMove">
         <StackPanel>
-            <!-- Processing state: spinner + "Correcting..." -->
+            <!-- Processing state: spinner + "Correcting with {Mode}..." -->
             <StackPanel x:Name="ProcessingPanel" Orientation="Horizontal" Visibility="Visible">
                 <Ellipse x:Name="Spinner" Width="18" Height="18"
                          Stroke="#6C63FF" StrokeThickness="2"
@@ -190,7 +190,7 @@
                         <RotateTransform CenterX="9" CenterY="9"/>
                     </Ellipse.RenderTransform>
                 </Ellipse>
-                <TextBlock Text="Correcting..." Foreground="#E0E0E0"
+                <TextBlock x:Name="ProcessingText" Text="Correcting..." Foreground="#E0E0E0"
                            FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
             </StackPanel>
 
@@ -202,10 +202,19 @@
                                DockPanel.Dock="Right"
                                MouseLeftButtonDown="OnPinToggle"/>
                     <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="InlineSpinner" Width="14" Height="14"
+                                 Stroke="#6C63FF" StrokeThickness="2"
+                                 StrokeDashArray="3 2" Margin="0,0,8,0"
+                                 VerticalAlignment="Center" Visibility="Collapsed">
+                            <Ellipse.RenderTransform>
+                                <RotateTransform CenterX="7" CenterY="7"/>
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
                         <TextBlock x:Name="StatusIcon" Text="&#x2713;" Foreground="#4ADE80"
                                    FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
                         <TextBlock x:Name="StatusText" Text="" Foreground="#E0E0E0"
-                                   FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
+                                   FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"
+                                   TextWrapping="Wrap" MaxWidth="340"/>
                     </StackPanel>
                 </DockPanel>
 
@@ -213,10 +222,12 @@
                 <TextBlock x:Name="OriginalText" Foreground="#AAAAAA"
                            FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
                            TextDecorations="Strikethrough" Margin="0,0,0,4"/>
-                <!-- Corrected text -->
-                <TextBlock x:Name="CorrectedText" Foreground="#E0E0E0"
-                           FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
-                           Margin="0,0,0,10"/>
+                <!-- Corrected text — TextBox so it can be selected/copied and edited in manual mode -->
+                <TextBox x:Name="CorrectedText" Foreground="#E0E0E0"
+                         Background="Transparent" BorderBrush="Transparent"
+                         CaretBrush="#6C63FF" IsReadOnly="True"
+                         FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
+                         AcceptsReturn="True" Padding="0" Margin="0,0,0,10"/>
 
                 <!-- Action buttons -->
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,6">

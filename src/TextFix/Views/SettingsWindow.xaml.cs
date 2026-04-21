@@ -22,14 +22,6 @@ public partial class SettingsWindow : Window
         "claude-opus-4-7",
     ];
 
-    private static readonly (string Label, int Seconds)[] AutoApplyOptions =
-    [
-        ("Off (manual Enter/Esc)", 0),
-        ("3 seconds", 3),
-        ("5 seconds", 5),
-        ("10 seconds", 10),
-    ];
-
     public bool SettingsChanged { get; private set; }
 
     public SettingsWindow(AppSettings settings)
@@ -51,18 +43,30 @@ public partial class SettingsWindow : Window
 
         RefreshModeBox();
 
-        int selectedIndex = 0;
-        for (int i = 0; i < AutoApplyOptions.Length; i++)
-        {
-            AutoApplyBox.Items.Add(AutoApplyOptions[i].Label);
-            if (AutoApplyOptions[i].Seconds == settings.OverlayAutoApplySeconds)
-                selectedIndex = i;
-        }
-        AutoApplyBox.SelectedIndex = selectedIndex;
+        AutoApplyBox.Text = settings.OverlayAutoApplySeconds.ToString();
+        ManualOnlyBox.IsChecked = settings.ManualApplyOnly;
+        UpdateAutoApplyEnabled();
 
         KeepOverlayOpenBox.IsChecked = settings.KeepOverlayOpen;
 
         PopulateCustomModesList();
+    }
+
+    private void OnDigitsOnly(object sender, System.Windows.Input.TextCompositionEventArgs e)
+    {
+        foreach (var ch in e.Text)
+        {
+            if (!char.IsDigit(ch)) { e.Handled = true; return; }
+        }
+    }
+
+    private void OnManualOnlyChanged(object sender, RoutedEventArgs e) => UpdateAutoApplyEnabled();
+
+    private void UpdateAutoApplyEnabled()
+    {
+        var manual = ManualOnlyBox.IsChecked == true;
+        AutoApplyBox.IsEnabled = !manual;
+        AutoApplyBox.Opacity = manual ? 0.5 : 1.0;
     }
 
     private void RefreshModeBox()
@@ -242,10 +246,16 @@ public partial class SettingsWindow : Window
         _settings.Model = ModelBox.SelectedItem as string ?? _settings.Model;
         _settings.ActiveModeName = ModeBox.SelectedItem as string ?? _settings.ActiveModeName;
 
-        var idx = AutoApplyBox.SelectedIndex;
-        if (idx >= 0 && idx < AutoApplyOptions.Length)
-            _settings.OverlayAutoApplySeconds = AutoApplyOptions[idx].Seconds;
+        var autoApplyText = AutoApplyBox.Text.Trim();
+        if (!int.TryParse(autoApplyText, out var seconds) || seconds < 0)
+        {
+            WpfMessageBox.Show("Auto-apply delay must be a non-negative integer (seconds).", "TextFix",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        _settings.OverlayAutoApplySeconds = Math.Min(seconds, 300);
 
+        _settings.ManualApplyOnly = ManualOnlyBox.IsChecked == true;
         _settings.KeepOverlayOpen = KeepOverlayOpenBox.IsChecked == true;
 
         try

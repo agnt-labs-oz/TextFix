@@ -22,6 +22,7 @@ public partial class OverlayWindow : Window
     private bool _suppressModeChange;
     private bool _showingIdle;
     private bool _historyVisible;
+    private bool _processingInline;
     private CorrectionHistory? _history;
 
     public event Action<bool>? UserResponded;
@@ -73,14 +74,42 @@ public partial class OverlayWindow : Window
 
     public void SetHistory(CorrectionHistory history) => _history = history;
 
-    public void ShowProcessing()
+    public void ShowProcessing(string modeLabel = "")
     {
+        var freshLabel = string.IsNullOrEmpty(modeLabel) ? "Correcting..." : $"Correcting with {modeLabel}...";
+        var inlineLabel = string.IsNullOrEmpty(modeLabel) ? "Refining..." : $"Refining with {modeLabel}...";
+
+        // Inline mode: dialog is already visible with a result — keep it, show spinner in header
+        if (IsVisible && ResultPanel.Visibility == Visibility.Visible)
+        {
+            _processingInline = true;
+            _showingError = false;
+            _showingApplied = false;
+            StopAutoApply();
+            Opacity = 1;
+
+            InlineSpinner.Visibility = Visibility.Visible;
+            StatusIcon.Visibility = Visibility.Collapsed;
+            StatusText.Text = inlineLabel;
+            StatusText.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xE0, 0xE0, 0xE0));
+            CountdownText.Visibility = Visibility.Collapsed;
+
+            SetActionsEnabled(false);
+            StartInlineSpinner();
+            return;
+        }
+
+        // Fresh path: standalone small pill
+        _processingInline = false;
         _showingError = false;
         _showingApplied = false;
         _showingIdle = false;
         _historyVisible = false;
         StopAutoApply();
+        StopInlineSpinner();
         Opacity = 1;
+
+        ProcessingText.Text = freshLabel;
         ProcessingPanel.Visibility = Visibility.Visible;
         ResultPanel.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
@@ -94,14 +123,77 @@ public partial class OverlayWindow : Window
         Dispatcher.InvokeAsync(PositionNearCursor, System.Windows.Threading.DispatcherPriority.Loaded);
     }
 
-    public void ShowResult(CorrectionResult result, int autoApplySeconds, bool keepOpen = false)
+    private void ApplyEditableState(bool editable)
     {
+        CorrectedText.IsReadOnly = !editable;
+        if (editable)
+        {
+            CorrectedText.Background = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x23, 0x23, 0x36));
+            CorrectedText.BorderBrush = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x55, 0x55, 0x55));
+            CorrectedText.BorderThickness = new Thickness(1);
+            CorrectedText.Padding = new Thickness(6, 4, 6, 4);
+        }
+        else
+        {
+            CorrectedText.Background = WpfMedia.Brushes.Transparent;
+            CorrectedText.BorderBrush = WpfMedia.Brushes.Transparent;
+            CorrectedText.BorderThickness = new Thickness(0);
+            CorrectedText.Padding = new Thickness(0);
+        }
+    }
+
+    public string GetEditedText() => CorrectedText.Text;
+
+    private void SetActionsEnabled(bool enabled)
+    {
+        ApplyButton.IsEnabled = enabled;
+        CancelButton.IsEnabled = enabled;
+        RedoOrigButton.IsEnabled = enabled;
+        RedoRefineButton.IsEnabled = enabled;
+        CopyButton.IsEnabled = enabled;
+        HistoryToggleButton.IsEnabled = enabled;
+        ModeBox.IsEnabled = enabled;
+    }
+
+    public void ShowResult(CorrectionResult result, int autoApplySeconds, bool keepOpen = false, bool editable = false)
+    {
+        // Inline error: preserve existing dialog, show error in status strip, re-enable actions
+        if (_processingInline && result.IsError)
+        {
+            _processingInline = false;
+            _showingError = true;
+            _showingApplied = false;
+            StopInlineSpinner();
+            StopAutoApply();
+            Opacity = 1;
+
+            StatusIcon.Visibility = Visibility.Visible;
+            StatusIcon.Text = "⚠";
+            StatusIcon.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xF8, 0x71, 0x71));
+            StatusText.Text = result.ErrorMessage;
+            StatusText.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xF8, 0x71, 0x71));
+
+            SetActionsEnabled(true);
+            ApplyButton.IsEnabled = _currentResult is not null && !_currentResult.IsError;
+            CancelButton.IsEnabled = _currentResult is not null && !_currentResult.IsError;
+
+            // Ensure user always has a way to retry/copy/dismiss after inline error
+            if (_currentResult is not null)
+                ActionRowPanel.Visibility = Visibility.Visible;
+
+            Activate();
+            Focus();
+            return;
+        }
+
+        _processingInline = false;
         _currentResult = result;
         _keepOpen = keepOpen;
         _showingIdle = false;
         _historyVisible = false;
         Opacity = 1;
         StopSpinnerAnimation();
+        StopInlineSpinner();
         StopAutoApply();
         IdlePanel.Visibility = Visibility.Collapsed;
         HistoryPanel.Visibility = Visibility.Collapsed;
@@ -147,6 +239,14 @@ public partial class OverlayWindow : Window
         // Restore Apply/Cancel in case ShowApplied hid them
         ApplyButton.Visibility = Visibility.Visible;
         CancelButton.Visibility = Visibility.Visible;
+        SetActionsEnabled(true);
+
+        // Reset status header (may have been set to red warning by inline error)
+        InlineSpinner.Visibility = Visibility.Collapsed;
+        StatusIcon.Visibility = Visibility.Visible;
+        StatusIcon.Text = "✓";
+        StatusIcon.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x4A, 0xDE, 0x80));
+        StatusText.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xE0, 0xE0, 0xE0));
 
         UpdatePinIcon();
 
@@ -154,6 +254,7 @@ public partial class OverlayWindow : Window
         StatusText.Text = $"Fixed {changeCount} error{(changeCount == 1 ? "" : "s")}";
         OriginalText.Text = result.OriginalText;
         CorrectedText.Text = result.CorrectedText;
+        ApplyEditableState(editable);
 
         Activate();
         Focus();
@@ -164,11 +265,13 @@ public partial class OverlayWindow : Window
 
     public void ShowApplied()
     {
+        _processingInline = false;
         _showingError = false;
         _showingApplied = true;
         _showingIdle = false;
         Opacity = 1;
         StopAutoApply();
+        StopInlineSpinner();
         ProcessingPanel.Visibility = Visibility.Collapsed;
         ErrorPanel.Visibility = Visibility.Collapsed;
         IdlePanel.Visibility = Visibility.Collapsed;
@@ -179,9 +282,12 @@ public partial class OverlayWindow : Window
         ActionRowPanel.Visibility = Visibility.Visible;
 
         // Update status to "Applied!" but keep the diff text visible
+        InlineSpinner.Visibility = Visibility.Collapsed;
+        StatusIcon.Visibility = Visibility.Visible;
         StatusIcon.Text = "\u2713";
         StatusIcon.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x4A, 0xDE, 0x80));
         StatusText.Text = "Applied!";
+        StatusText.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xE0, 0xE0, 0xE0));
 
         // Hide Apply/Cancel since already applied, keep mode selector and action row
         ApplyButton.Visibility = Visibility.Collapsed;
@@ -201,6 +307,8 @@ public partial class OverlayWindow : Window
         _showingError = false;
         _showingApplied = false;
         _showingIdle = false;
+        _processingInline = false;
+        StopInlineSpinner();
         Opacity = 1;
         ProcessingPanel.Visibility = Visibility.Collapsed;
         ResultPanel.Visibility = Visibility.Collapsed;
@@ -333,6 +441,11 @@ public partial class OverlayWindow : Window
 
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
+        if (_processingInline)
+        {
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.Enter || e.Key == Key.Return)
         {
             StopAutoApply();
@@ -419,6 +532,31 @@ public partial class OverlayWindow : Window
         _spinnerStoryboard = null;
     }
 
+    private Storyboard? _inlineSpinnerStoryboard;
+
+    private void StartInlineSpinner()
+    {
+        if (_inlineSpinnerStoryboard is not null) return;
+        var animation = new DoubleAnimation
+        {
+            From = 0, To = 360,
+            Duration = new Duration(TimeSpan.FromSeconds(1.5)),
+            RepeatBehavior = RepeatBehavior.Forever,
+        };
+        Storyboard.SetTarget(animation, InlineSpinner);
+        Storyboard.SetTargetProperty(animation, new PropertyPath("RenderTransform.Angle"));
+        _inlineSpinnerStoryboard = new Storyboard();
+        _inlineSpinnerStoryboard.Children.Add(animation);
+        _inlineSpinnerStoryboard.Begin(this);
+    }
+
+    private void StopInlineSpinner()
+    {
+        _inlineSpinnerStoryboard?.Stop(this);
+        _inlineSpinnerStoryboard = null;
+        InlineSpinner.Visibility = Visibility.Collapsed;
+    }
+
     public void ShowIdle(CorrectionHistory history, CorrectionResult? lastResult)
     {
         _showingError = false;
@@ -473,8 +611,10 @@ public partial class OverlayWindow : Window
     {
         _historyVisible = false;
         HistoryPanel.Visibility = Visibility.Collapsed;
-        if (_currentResult is not null)
-            ReapplyRequested?.Invoke(_currentResult.CorrectedText);
+        // Use current (possibly edited) text from the editor
+        var text = CorrectedText.Text;
+        if (!string.IsNullOrEmpty(text))
+            ReapplyRequested?.Invoke(text);
     }
 
     private void OnActionCopy(object sender, RoutedEventArgs e)
