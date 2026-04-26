@@ -8,6 +8,7 @@ using TextFix.Interop;
 using TextFix.Models;
 using TextFix.Services;
 using TextFix.Views;
+using Velopack;
 using Application = System.Windows.Application;
 using MessageBox = System.Windows.MessageBox;
 
@@ -15,6 +16,17 @@ namespace TextFix;
 
 public partial class App : Application
 {
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        // Velopack hooks (install/update/uninstall/firstrun) may exit the process before the WPF app starts.
+        VelopackApp.Build().Run();
+
+        var app = new App();
+        app.InitializeComponent();
+        app.Run();
+    }
+
     private static Mutex? _mutex;
     private NotifyIcon? _trayIcon;
     private ToolStripMenuItem? _historyMenu;
@@ -24,6 +36,7 @@ public partial class App : Application
     private ClipboardManager? _clipboardManager;
     private FocusTracker? _focusTracker;
     private OverlayWindow? _overlay;
+    private UpdateService? _updateService;
     private AppSettings _settings = new();
     private int _isBusy;
     private System.Windows.Threading.DispatcherTimer? _keepAliveTimer;
@@ -59,9 +72,56 @@ public partial class App : Application
         await SetupServicesAsync();
         RegisterHotkey();
 
+        _updateService = new UpdateService();
+        _ = CheckForUpdatesSilentAsync();
+
         // Prompt for API key on first run
         if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
             OpenSettings();
+    }
+
+    private async Task CheckForUpdatesSilentAsync()
+    {
+        if (_updateService is null) return;
+        var result = await _updateService.CheckAndDownloadAsync();
+        if (result.State == UpdateState.Ready && result.Info is not null)
+        {
+            _updateService.ApplyOnExit(result.Info);
+            Dispatcher.Invoke(() => _trayIcon?.ShowBalloonTip(
+                4000,
+                "TextFix",
+                $"Update {result.Version} downloaded — will install when you exit TextFix.",
+                ToolTipIcon.Info));
+        }
+    }
+
+    private async void OnCheckForUpdatesClicked(object? sender, EventArgs e)
+    {
+        if (_updateService is null) return;
+        _trayIcon?.ShowBalloonTip(2000, "TextFix", "Checking for updates…", ToolTipIcon.Info);
+        var result = await _updateService.CheckAndDownloadAsync();
+        switch (result.State)
+        {
+            case UpdateState.NotInstalled:
+                _trayIcon?.ShowBalloonTip(3000, "TextFix",
+                    "Updates only work for installed builds. Run the Setup.exe from GitHub Releases.",
+                    ToolTipIcon.Info);
+                break;
+            case UpdateState.UpToDate:
+                _trayIcon?.ShowBalloonTip(3000, "TextFix",
+                    $"You're on the latest version ({result.Version}).", ToolTipIcon.Info);
+                break;
+            case UpdateState.Ready when result.Info is not null:
+                _updateService.ApplyOnExit(result.Info);
+                _trayIcon?.ShowBalloonTip(4000, "TextFix",
+                    $"Update {result.Version} downloaded — will install when you exit TextFix.",
+                    ToolTipIcon.Info);
+                break;
+            case UpdateState.Error:
+                _trayIcon?.ShowBalloonTip(3000, "TextFix",
+                    $"Update check failed: {result.Error}", ToolTipIcon.Warning);
+                break;
+        }
     }
 
     private void CreateHiddenWindow()
@@ -119,6 +179,7 @@ public partial class App : Application
 
         _trayIcon.ContextMenuStrip.Items.Add("Copy Last Correction", null, (_, _) => CopyLastCorrection());
         _trayIcon.ContextMenuStrip.Items.Add("Settings", null, (_, _) => OpenSettings());
+        _trayIcon.ContextMenuStrip.Items.Add("Check for updates…", null, OnCheckForUpdatesClicked);
         _trayIcon.ContextMenuStrip.Items.Add("-");
         _trayIcon.ContextMenuStrip.Items.Add("Exit", null, (_, _) => Shutdown());
     }

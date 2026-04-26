@@ -20,6 +20,11 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Get version
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
       - name: Restore
         run: dotnet restore
 
@@ -32,39 +37,37 @@ jobs:
           -c Release
           -r win-x64
           --self-contained true
-          -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
-          -p:EnableCompressionInSingleFile=true
           -o publish
 
-      - name: Create unsigned zip (artifact for signing)
-        run: Compress-Archive -Path publish/TextFix.exe -DestinationPath TextFix-unsigned.zip
+      # SignPath signing of publish/TextFix.exe slots in here once SIGNPATH_ORGANIZATION_ID is set.
+      # Project must be configured with an artifact config that accepts a single .exe file.
 
-      - name: Sign with SignPath
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
-        uses: signpath/github-action-submit-signing-request@v1
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: 'TextFix'
-          signing-policy-slug: 'release-signing'
-          artifact-configuration-slug: 'zip-exe'
-          input-artifact-path: 'TextFix-unsigned.zip'
-          output-artifact-path: 'TextFix-signed.zip'
-          wait-for-completion: true
-          wait-for-completion-timeout-in-seconds: 300
+      - name: Install vpk
+        run: dotnet tool install -g vpk
 
-      - name: Extract signed exe
-        if: vars.SIGNPATH_ORGANIZATION_ID != ''
-        run: |
-          Remove-Item publish/TextFix.exe
-          Expand-Archive -Path TextFix-signed.zip -DestinationPath publish -Force
+      - name: Download previous release (for delta generation)
+        continue-on-error: true
+        run: vpk download github --repoUrl https://github.com/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create release zip
-        run: Compress-Archive -Path publish/TextFix.exe -DestinationPath TextFix-${{ github.ref_name }}-win-x64.zip
+      - name: Pack
+        run: >
+          vpk pack
+          --packId TextFix
+          --packVersion ${{ steps.version.outputs.version }}
+          --packDir publish
+          --mainExe TextFix.exe
+          --packTitle "TextFix"
+          --packAuthors "wellsst"
+          --icon src/TextFix/Resources/textfix.ico
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          generate_release_notes: true
-          files: TextFix-${{ github.ref_name }}-win-x64.zip
+      # SignPath signing of Releases/TextFix-*-Setup.exe slots in here once SIGNPATH_ORGANIZATION_ID is set.
+
+      - name: Upload to GitHub Releases
+        run: >
+          vpk upload github
+          --repoUrl https://github.com/${{ github.repository }}
+          --token ${{ secrets.GITHUB_TOKEN }}
+          --publish
+          --merge
+          --releaseName "TextFix ${{ github.ref_name }}"
+          --tag ${{ github.ref_name }}
