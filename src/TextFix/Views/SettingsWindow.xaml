@@ -213,13 +213,6 @@
             </Border>
         </StackPanel>
 
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-            <CheckBox x:Name="KeepOverlayOpenBox" VerticalAlignment="Center"
-                      Margin="0,0,8,0"/>
-            <TextBlock Text="Keep overlay open after applying" Foreground="#AAAAAA"
-                       FontSize="12" VerticalAlignment="Center"/>
-        </StackPanel>
-
         </StackPanel>
         </ScrollViewer>
 

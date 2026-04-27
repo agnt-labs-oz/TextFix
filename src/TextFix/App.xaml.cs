@@ -241,18 +241,42 @@ public partial class App : Application
         _overlay = new OverlayWindow();
         _overlay.UserResponded += OnUserResponded;
         _overlay.RetryRequested += OnRetryRequested;
-        _overlay.KeepOpenChanged += OnKeepOpenChanged;
         _overlay.ModeChanged += OnOverlayModeChanged;
         _overlay.OverlayHidden += OnOverlayHidden;
         _overlay.CopyRequested += OnCopyRequested;
         _overlay.ReapplyRequested += OnReapplyRequested;
+        _overlay.BoundsChanged += OnOverlayBoundsChanged;
+        _overlay.LoadSavedBounds(
+            _settings.OverlayWidth, _settings.OverlayHeight,
+            _settings.OverlayLeft, _settings.OverlayTop);
         _overlay.SetActiveMode(_settings.ActiveModeName);
     }
 
-    private async void OnKeepOpenChanged(bool keepOpen)
+    private System.Windows.Threading.DispatcherTimer? _boundsSaveTimer;
+
+    private void OnOverlayBoundsChanged(double width, double height, double left, double top)
     {
-        _settings.KeepOverlayOpen = keepOpen;
-        await _settings.SaveAsync();
+        _settings.OverlayWidth = width;
+        _settings.OverlayHeight = height;
+        _settings.OverlayLeft = left;
+        _settings.OverlayTop = top;
+
+        // Debounce — drag/resize fires many events; only persist after activity settles.
+        if (_boundsSaveTimer is null)
+        {
+            _boundsSaveTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(600),
+            };
+            _boundsSaveTimer.Tick += async (_, _) =>
+            {
+                _boundsSaveTimer!.Stop();
+                try { await _settings.SaveAsync(); }
+                catch (Exception ex) { LogError(ex); }
+            };
+        }
+        _boundsSaveTimer.Stop();
+        _boundsSaveTimer.Start();
     }
 
     private void OnOverlayHidden()
@@ -360,7 +384,7 @@ public partial class App : Application
             Dispatcher.Invoke(async () =>
             {
                 var autoApply = _settings.ManualApplyOnly ? 0 : _settings.OverlayAutoApplySeconds;
-                _overlay?.ShowResult(result, autoApply, _settings.KeepOverlayOpen, _settings.ManualApplyOnly);
+                _overlay?.ShowResult(result, autoApply, _settings.ManualApplyOnly);
                 RefreshHistoryMenu();
                 await _correctionService.History.SaveAsync();
             });

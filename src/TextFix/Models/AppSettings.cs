@@ -28,13 +28,18 @@ public class AppSettings
     public string Model { get; set; } = "claude-haiku-4-5-20251001";
 
     public int OverlayAutoApplySeconds { get; set; } = 3;
-    public bool KeepOverlayOpen { get; set; }
     public bool ManualApplyOnly { get; set; }
     public bool StartWithWindows { get; set; }
 
     public string ActiveModeName { get; set; } = "Fix errors";
 
     public List<CorrectionMode> CustomModes { get; set; } = [];
+
+    // Persisted overlay bounds for the result/diff view. null = unset (use defaults / position near cursor).
+    public double? OverlayWidth { get; set; }
+    public double? OverlayHeight { get; set; }
+    public double? OverlayLeft { get; set; }
+    public double? OverlayTop { get; set; }
 
     public CorrectionMode GetActiveMode()
     {

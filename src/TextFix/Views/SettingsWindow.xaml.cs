@@ -47,8 +47,6 @@ public partial class SettingsWindow : Window
         ManualOnlyBox.IsChecked = settings.ManualApplyOnly;
         UpdateAutoApplyEnabled();
 
-        KeepOverlayOpenBox.IsChecked = settings.KeepOverlayOpen;
-
         PopulateCustomModesList();
     }
 
@@ -256,7 +254,6 @@ public partial class SettingsWindow : Window
         _settings.OverlayAutoApplySeconds = Math.Min(seconds, 300);
 
         _settings.ManualApplyOnly = ManualOnlyBox.IsChecked == true;
-        _settings.KeepOverlayOpen = KeepOverlayOpenBox.IsChecked == true;
 
         try
         {

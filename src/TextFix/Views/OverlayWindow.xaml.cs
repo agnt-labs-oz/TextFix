@@ -18,20 +18,28 @@ public partial class OverlayWindow : Window
     private CorrectionResult? _currentResult;
     private bool _showingError;
     private bool _showingApplied;
-    private bool _keepOpen;
     private bool _suppressModeChange;
     private bool _showingIdle;
     private bool _historyVisible;
     private bool _processingInline;
     private CorrectionHistory? _history;
 
+    // Persisted across sessions so user-resized result windows stay that size and place.
+    private double _resultPrefWidth = 640;
+    private double _resultPrefHeight = 620;
+    private double? _savedLeft;
+    private double? _savedTop;
+    // Set true while SetResultSizing is programmatically resizing the window —
+    // suppresses OnWindowSizeChanged captures of the intermediate transition sizes.
+    private bool _suppressSizeCapture;
+
     public event Action<bool>? UserResponded;
     public event Action? RetryRequested;
     public event Action? CopyRequested;
-    public event Action<bool>? KeepOpenChanged;
     public event Action<string>? ModeChanged;
     public event Action? OverlayHidden;
     public event Action<string>? ReapplyRequested;      // text to reapply
+    public event Action<double, double, double, double>? BoundsChanged; // width, height, left, top
 
     public OverlayWindow()
     {
@@ -117,6 +125,7 @@ public partial class OverlayWindow : Window
         IdlePanel.Visibility = Visibility.Collapsed;
         HistoryPanel.Visibility = Visibility.Collapsed;
         ActionRowPanel.Visibility = Visibility.Collapsed;
+        SetPillSizing();
 
         StartSpinnerAnimation();
         Show();
@@ -155,7 +164,7 @@ public partial class OverlayWindow : Window
         ModeBox.IsEnabled = enabled;
     }
 
-    public void ShowResult(CorrectionResult result, int autoApplySeconds, bool keepOpen = false, bool editable = false)
+    public void ShowResult(CorrectionResult result, int autoApplySeconds, bool editable = false)
     {
         // Inline error: preserve existing dialog, show error in status strip, re-enable actions
         if (_processingInline && result.IsError)
@@ -188,7 +197,6 @@ public partial class OverlayWindow : Window
 
         _processingInline = false;
         _currentResult = result;
-        _keepOpen = keepOpen;
         _showingIdle = false;
         _historyVisible = false;
         Opacity = 1;
@@ -208,6 +216,7 @@ public partial class OverlayWindow : Window
             InfoPanel.Visibility = Visibility.Collapsed;
             ErrorPanel.Visibility = Visibility.Visible;
             ErrorText.Text = result.ErrorMessage;
+            SetPillSizing();
 
             Activate();
             Focus();
@@ -224,6 +233,7 @@ public partial class OverlayWindow : Window
             InfoPanel.Visibility = Visibility.Visible;
             InfoText.Text = "No corrections needed.";
             InfoHint.Visibility = Visibility.Collapsed;
+            SetPillSizing();
 
             FadeAndClose(2);
             return;
@@ -235,6 +245,7 @@ public partial class OverlayWindow : Window
         ResultPanel.Visibility = Visibility.Visible;
         ErrorPanel.Visibility = Visibility.Collapsed;
         InfoPanel.Visibility = Visibility.Collapsed;
+        SetResultSizing();
 
         // Restore Apply/Cancel in case ShowApplied hid them
         ApplyButton.Visibility = Visibility.Visible;
@@ -247,8 +258,6 @@ public partial class OverlayWindow : Window
         StatusIcon.Text = "✓";
         StatusIcon.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x4A, 0xDE, 0x80));
         StatusText.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xE0, 0xE0, 0xE0));
-
-        UpdatePinIcon();
 
         var changeCount = CountChanges(result.OriginalText, result.CorrectedText);
         StatusText.Text = $"Fixed {changeCount} error{(changeCount == 1 ? "" : "s")}";
@@ -319,29 +328,36 @@ public partial class OverlayWindow : Window
         InfoPanel.Visibility = Visibility.Visible;
         InfoText.Text = "Focus changed \u2014 Ctrl+V to paste";
         InfoHint.Visibility = Visibility.Collapsed;
+        SetPillSizing();
 
-        FadeAndClose(_keepOpen ? 5 : 3);
-    }
-
-    private void UpdatePinIcon()
-    {
-        PinToggle.Text = _keepOpen ? "Pinned" : "Pin open";
-        PinToggle.Foreground = _keepOpen
-            ? new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x6C, 0x63, 0xFF))
-            : new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x66, 0x66, 0x66));
+        FadeAndClose(3);
     }
 
     private void OnDragMove(object sender, MouseButtonEventArgs e)
     {
-        if (e.ChangedButton == MouseButton.Left)
-            DragMove();
+        if (e.ChangedButton != MouseButton.Left) return;
+        var beforeLeft = Left;
+        var beforeTop = Top;
+        DragMove();
+        if (Left != beforeLeft || Top != beforeTop)
+        {
+            _savedLeft = Left;
+            _savedTop = Top;
+            BoundsChanged?.Invoke(ActualWidth, ActualHeight, Left, Top);
+        }
     }
 
-    private void OnPinToggle(object sender, MouseButtonEventArgs e)
+    public void LoadSavedBounds(double? width, double? height, double? left, double? top)
     {
-        _keepOpen = !_keepOpen;
-        UpdatePinIcon();
-        KeepOpenChanged?.Invoke(_keepOpen);
+        // Floor on restore — saved values from earlier buggy capture (intermediate transition sizes)
+        // could land below a usable height, so always come up tall enough to be useful.
+        if (width is > 0) _resultPrefWidth = Math.Max(480, width.Value);
+        if (height is > 0) _resultPrefHeight = Math.Max(480, height.Value);
+        if (left.HasValue && top.HasValue && !double.IsNaN(left.Value) && !double.IsNaN(top.Value))
+        {
+            _savedLeft = left;
+            _savedTop = top;
+        }
     }
 
     // --- Clickable button handlers ---
@@ -425,6 +441,14 @@ public partial class OverlayWindow : Window
 
     private void PositionNearCursor()
     {
+        if (_savedLeft.HasValue && _savedTop.HasValue)
+        {
+            Left = _savedLeft.Value;
+            Top = _savedTop.Value;
+            ClampToScreen();
+            return;
+        }
+
         if (NativeMethods.GetCursorPos(out var point))
         {
             Left = point.X + 10;
@@ -436,6 +460,72 @@ public partial class OverlayWindow : Window
                 Left = screen.Right - ActualWidth - 10;
             if (Top + ActualHeight > screen.Bottom)
                 Top = point.Y - ActualHeight - 10;
+        }
+    }
+
+    // Auto-fit the window to the small pill states (processing, error, idle, info).
+    private void SetPillSizing()
+    {
+        ResizeGrip.Visibility = Visibility.Collapsed;
+        if (SizeToContent != SizeToContent.WidthAndHeight)
+        {
+            ClearValue(WidthProperty);
+            ClearValue(HeightProperty);
+            SizeToContent = SizeToContent.WidthAndHeight;
+        }
+    }
+
+    // Switch to manual sizing for the result/diff view so it can hold long text + scroll, and resize.
+    private void SetResultSizing()
+    {
+        _suppressSizeCapture = true;
+        if (SizeToContent != SizeToContent.Manual)
+            SizeToContent = SizeToContent.Manual;
+        Width = _resultPrefWidth;
+        Height = _resultPrefHeight;
+        ResizeGrip.Visibility = Visibility.Visible;
+        Dispatcher.InvokeAsync(() =>
+        {
+            if (_savedLeft.HasValue && _savedTop.HasValue)
+            {
+                Left = _savedLeft.Value;
+                Top = _savedTop.Value;
+            }
+            ClampToScreen();
+            // Release suppression after layout settles so genuine user-driven resizes are captured.
+            _suppressSizeCapture = false;
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void ClampToScreen()
+    {
+        var helper = new System.Windows.Interop.WindowInteropHelper(this);
+        var screen = helper.Handle != IntPtr.Zero
+            ? System.Windows.Forms.Screen.FromHandle(helper.Handle).WorkingArea
+            : System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea
+              ?? new System.Drawing.Rectangle(0, 0, 1920, 1080);
+
+        if (Left + ActualWidth > screen.Right)
+            Left = Math.Max(screen.Left, screen.Right - ActualWidth - 10);
+        if (Top + ActualHeight > screen.Bottom)
+            Top = Math.Max(screen.Top, screen.Bottom - ActualHeight - 10);
+        if (Left < screen.Left) Left = screen.Left;
+        if (Top < screen.Top) Top = screen.Top;
+    }
+
+    private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        // Skip programmatic resizes — those carry transition sizes from the pill→result switch.
+        if (_suppressSizeCapture) return;
+
+        // Persist user-driven resizes only while the result panel is the active manual-sized view.
+        if (SizeToContent == SizeToContent.Manual
+            && ResultPanel.Visibility == Visibility.Visible)
+        {
+            _resultPrefWidth = e.NewSize.Width;
+            _resultPrefHeight = e.NewSize.Height;
+            BoundsChanged?.Invoke(e.NewSize.Width, e.NewSize.Height,
+                _savedLeft ?? Left, _savedTop ?? Top);
         }
     }
 
@@ -573,6 +663,7 @@ public partial class OverlayWindow : Window
         InfoPanel.Visibility = Visibility.Collapsed;
         IdlePanel.Visibility = Visibility.Visible;
         ActionRowPanel.Visibility = Visibility.Visible;
+        SetPillSizing();
 
         var costStr = history.SessionCost > 0 ? $" \u00b7 ${history.SessionCost:F4} session" : "";
         IdleStatsText.Text = $"{history.TodayCount} today \u00b7 {history.TotalCount} total{costStr}";
@@ -590,6 +681,17 @@ public partial class OverlayWindow : Window
 
     private void PositionNearTray()
     {
+        if (_savedLeft.HasValue && _savedTop.HasValue)
+        {
+            Dispatcher.InvokeAsync(() =>
+            {
+                Left = _savedLeft.Value;
+                Top = _savedTop.Value;
+                ClampToScreen();
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
+            return;
+        }
+
         var screen = System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea
             ?? new System.Drawing.Rectangle(0, 0, 1920, 1080);
         Dispatcher.InvokeAsync(() =>
