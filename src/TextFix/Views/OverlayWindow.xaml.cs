@@ -174,7 +174,7 @@ public partial class OverlayWindow : Window
         var diff = TextFix.Services.DiffEngine.Compute(original, corrected);
         bool multiline = original.Contains('\n') || corrected.Contains('\n');
 
-        if (diff.Stats.ChangeRatio > DiffMaxChangeRatio)
+        if (diff.Stats.CharChangeRatio > DiffMaxChangeRatio)
         {
             // High change — diff would be noise. Just show corrected text.
             SetCorrectedPlainText(corrected);

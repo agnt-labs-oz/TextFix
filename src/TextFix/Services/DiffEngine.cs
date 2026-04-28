@@ -9,16 +9,31 @@ public enum DiffKind
 
 public record DiffSegment(DiffKind Kind, string Text);
 
-public record DiffStats(int OriginalWordCount, int RemovedWordCount, int AddedWordCount)
+public record DiffStats(
+    int OriginalWordCount,
+    int RemovedWordCount,
+    int AddedWordCount,
+    int CharEditDistance,
+    int MaxCharLength)
 {
     /// <summary>
-    /// (Removed + Added) / Original. Range [0.0, +inf): a pure-expansion correction can
-    /// exceed 1.0 (e.g. 1 word becomes 4 words = 4.0). When original is empty, returns
-    /// 0.0 if nothing was added (identical empties) else 1.0.
+    /// Word-level churn (Removed + Added) / Original. Range [0.0, +inf). Most "fix typos"
+    /// corrections produce ratios >= 1.0 because every typo is a full token swap at word
+    /// granularity ("helo" vs "hello" are different tokens). Use <see cref="CharChangeRatio"/>
+    /// for "is this a correction or a rewrite" gating.
     /// </summary>
     public double ChangeRatio => OriginalWordCount == 0
         ? (AddedWordCount == 0 ? 0.0 : 1.0)
         : (double)(RemovedWordCount + AddedWordCount) / OriginalWordCount;
+
+    /// <summary>
+    /// Character-level edit distance / max(originalLen, correctedLen). Range [0.0, 1.0].
+    /// ~0.0–0.2 = typo or minor correction; ~0.5+ = substantial rewrite. This is the
+    /// metric to use when deciding whether the change is "small enough that a diff helps".
+    /// </summary>
+    public double CharChangeRatio => MaxCharLength == 0
+        ? 0.0
+        : (double)CharEditDistance / MaxCharLength;
 }
 
 public record DiffResult(IReadOnlyList<DiffSegment> Segments, DiffStats Stats);
@@ -44,7 +59,36 @@ public static class DiffEngine
             .Where(s => s.Kind == DiffKind.Added)
             .Sum(s => CountWords(s.Text));
 
-        return new DiffResult(segments, new DiffStats(origWords, removedWords, addedWords));
+        int editDist = LevenshteinDistance(original ?? "", corrected ?? "");
+        int maxLen = Math.Max(original?.Length ?? 0, corrected?.Length ?? 0);
+
+        return new DiffResult(segments,
+            new DiffStats(origWords, removedWords, addedWords, editDist, maxLen));
+    }
+
+    private static int LevenshteinDistance(string a, string b)
+    {
+        if (a.Length == 0) return b.Length;
+        if (b.Length == 0) return a.Length;
+
+        // Two-row rolling DP — O(n) memory rather than O(n*m).
+        var prev = new int[b.Length + 1];
+        var curr = new int[b.Length + 1];
+        for (int j = 0; j <= b.Length; j++) prev[j] = j;
+
+        for (int i = 1; i <= a.Length; i++)
+        {
+            curr[0] = i;
+            for (int j = 1; j <= b.Length; j++)
+            {
+                int cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                curr[j] = Math.Min(
+                    Math.Min(curr[j - 1] + 1, prev[j] + 1),
+                    prev[j - 1] + cost);
+            }
+            (prev, curr) = (curr, prev);
+        }
+        return prev[b.Length];
     }
 
     private static List<string> Tokenize(string text)

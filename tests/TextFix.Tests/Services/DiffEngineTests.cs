@@ -138,4 +138,52 @@ public class DiffEngineTests
         Assert.Equal("a b", rebuiltOrig);
         Assert.Equal("a\tb", rebuiltCorr);
     }
+
+    [Fact]
+    public void Compute_CharChangeRatio_TypoFix_IsLow()
+    {
+        // "helo" → "hello": 1 char insert, max len = 5, ratio = 0.2.
+        var result = DiffEngine.Compute("helo", "hello");
+        Assert.InRange(result.Stats.CharChangeRatio, 0.15, 0.25);
+    }
+
+    [Fact]
+    public void Compute_CharChangeRatio_MultiTypoSentence_StillLow()
+    {
+        // Realistic typo-fix case that the word-level ratio over-counts at 2.0.
+        // Char edit distance: 'l' insert, 'l' insert, 'p' insert → 3.
+        // Max len = 26. Ratio ~ 0.115.
+        var result = DiffEngine.Compute("helo wrld this is a tpyo", "hello world this is a typo");
+        Assert.InRange(result.Stats.CharChangeRatio, 0.05, 0.20);
+    }
+
+    [Fact]
+    public void Compute_CharChangeRatio_CompleteRewrite_IsHigh()
+    {
+        // "make this concise" → "be brief" — almost no shared structure.
+        var result = DiffEngine.Compute("make this concise", "be brief");
+        Assert.True(result.Stats.CharChangeRatio > 0.5,
+            $"Expected high ratio for rewrite, got {result.Stats.CharChangeRatio:F2}");
+    }
+
+    [Fact]
+    public void Compute_CharChangeRatio_Identical_IsZero()
+    {
+        var result = DiffEngine.Compute("hello world", "hello world");
+        Assert.Equal(0.0, result.Stats.CharChangeRatio);
+    }
+
+    [Fact]
+    public void Compute_CharChangeRatio_EmptyInputs_IsZero()
+    {
+        var result = DiffEngine.Compute("", "");
+        Assert.Equal(0.0, result.Stats.CharChangeRatio);
+    }
+
+    [Fact]
+    public void Compute_CharChangeRatio_FromEmpty_IsOne()
+    {
+        var result = DiffEngine.Compute("", "hello");
+        Assert.Equal(1.0, result.Stats.CharChangeRatio);
+    }
 }
