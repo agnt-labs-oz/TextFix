@@ -231,8 +231,11 @@ public partial class OverlayWindow : Window
                 .Where(s => s.Kind != TextFix.Services.DiffKind.Removed)
                 .Select(s => s.Text));
 
-        var origLines = origText.Split('\n');
-        var corrLines = corrText.Split('\n');
+        // Normalize line endings — Windows clipboard text often arrives as \r\n while
+        // AI output is typically \n-only, which would otherwise cause every line to
+        // mismatch on the trailing \r and look as if the entire document was rewritten.
+        var origLines = origText.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+        var corrLines = corrText.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
 
         // Step 2: line-level LCS to classify each line as Equal/Removed/Added.
         int n = origLines.Length, m = corrLines.Length;
@@ -297,8 +300,11 @@ public partial class OverlayWindow : Window
                 {
                     if (seg.Kind == TextFix.Services.DiffKind.Equal)
                     {
-                        removedInlines.Add(MakeRun(seg.Text, RemovedBrush, null, true));
-                        addedInlines.Add(MakeRun(seg.Text, AddedBrush, null, false));
+                        // Unchanged words within a modified line — neutral foreground, no
+                        // strikethrough. The line-level red/green background already signals
+                        // "this line changed"; only the differing words get the stronger highlight.
+                        removedInlines.Add(MakeRun(seg.Text, EqualBrush, null, false));
+                        addedInlines.Add(MakeRun(seg.Text, EqualBrush, null, false));
                     }
                     else if (seg.Kind == TextFix.Services.DiffKind.Removed)
                     {
