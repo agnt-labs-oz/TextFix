@@ -216,4 +216,37 @@ public class AppSettingsTests : IDisposable
         Assert.Equal(CorrectionMode.Defaults.Count + 1, all.Count);
         Assert.Equal("Custom1", all[^1].Name);
     }
+
+    [Fact]
+    public void DiffMaxChangeRatio_DefaultsTo30Percent()
+    {
+        var settings = new AppSettings();
+        Assert.Equal(0.30, settings.DiffMaxChangeRatio, 3);
+    }
+
+    [Theory]
+    [InlineData(0.0, 0.05)]    // below floor → floor
+    [InlineData(0.04, 0.05)]
+    [InlineData(0.05, 0.05)]   // floor exact
+    [InlineData(0.30, 0.30)]   // unchanged
+    [InlineData(1.0, 1.0)]     // ceiling exact
+    [InlineData(2.5, 1.0)]     // above ceiling → ceiling
+    [InlineData(-0.5, 0.05)]   // negative → floor
+    public async Task LoadAsync_ClampsDiffMaxChangeRatio(double stored, double expected)
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            var seed = new AppSettings { DiffMaxChangeRatio = stored };
+            await seed.SaveAsync(path);
+
+            var loaded = await AppSettings.LoadAsync(path);
+
+            Assert.Equal(expected, loaded.DiffMaxChangeRatio, 3);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 }

@@ -41,6 +41,8 @@ public class AppSettings
     public double? OverlayLeft { get; set; }
     public double? OverlayTop { get; set; }
 
+    public double DiffMaxChangeRatio { get; set; } = 0.30;
+
     public CorrectionMode GetActiveMode()
     {
         return CorrectionMode.Defaults.FirstOrDefault(m => m.Name == ActiveModeName)
@@ -127,6 +129,9 @@ public class AppSettings
         {
             var json = await File.ReadAllTextAsync(path);
             var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
+
+            // Clamp DiffMaxChangeRatio to a sane range (5%..100%).
+            settings.DiffMaxChangeRatio = Math.Clamp(settings.DiffMaxChangeRatio, 0.05, 1.0);
 
             // Migrate plaintext key to encrypted
             if (!string.IsNullOrEmpty(settings.ApiKey) && string.IsNullOrEmpty(settings.EncryptedApiKey))
