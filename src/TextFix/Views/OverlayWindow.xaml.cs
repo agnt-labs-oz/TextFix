@@ -33,8 +33,6 @@ public partial class OverlayWindow : Window
     // suppresses OnWindowSizeChanged captures of the intermediate transition sizes.
     private bool _suppressSizeCapture;
 
-    public double DiffMaxChangeRatio { get; set; } = 0.30;
-
     public event Action<bool>? UserResponded;
     public event Action? RetryRequested;
     public event Action? CopyRequested;
@@ -160,27 +158,9 @@ public partial class OverlayWindow : Window
         // Corrected tab is always plain editable text — the apply/copy source.
         CorrectedText.Text = corrected;
 
-        // Diff tab is display-only: render colored inline diff regardless of multiline.
-        // Char-level ratio gating decides whether the diff is worth showing or noise.
-        var diff = TextFix.Services.DiffEngine.Compute(original, corrected);
-        if (diff.Stats.CharChangeRatio > DiffMaxChangeRatio)
-        {
-            SetDiffPlainText("(Substantial rewrite — diff suppressed. Adjust threshold in Settings.)");
-        }
-        else
-        {
-            RenderInlineWordDiff(diff);
-        }
-    }
-
-    private void SetDiffPlainText(string text)
-    {
-        var doc = new System.Windows.Documents.FlowDocument();
-        var para = new System.Windows.Documents.Paragraph(
-            new System.Windows.Documents.Run(text ?? ""))
-        { Margin = new Thickness(0), Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x88, 0x88, 0x88)) };
-        doc.Blocks.Add(para);
-        DiffText.Document = doc;
+        // Diff tab is display-only: always render the colored inline diff. Since the
+        // Diff tab is opt-in (user clicks to view), there's no need to gate by ratio.
+        RenderInlineWordDiff(TextFix.Services.DiffEngine.Compute(original, corrected));
     }
 
     private static readonly WpfMedia.Brush EqualBrush =
