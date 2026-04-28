@@ -293,16 +293,26 @@
                                    TextWrapping="Wrap" MaxWidth="340"/>
                     </StackPanel>
 
-                    <!-- Diff tabs: Corrected (primary) | Original -->
+                    <!-- Diff tabs: Corrected (editable apply target) | Diff (display-only) | Original -->
                     <TabControl x:Name="DiffTabs" Grid.Row="1"
                                 Style="{StaticResource OverlayTabControl}"
                                 Margin="0,0,0,10">
                         <TabItem Header="Corrected" Style="{StaticResource OverlayTabItem}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled">
-                                <RichTextBox x:Name="CorrectedText" Foreground="#E0E0E0"
+                                <TextBox x:Name="CorrectedText" Foreground="#E0E0E0"
+                                         Background="Transparent" BorderBrush="Transparent"
+                                         CaretBrush="#6C63FF" IsReadOnly="True"
+                                         FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
+                                         AcceptsReturn="True" Padding="0"/>
+                            </ScrollViewer>
+                        </TabItem>
+                        <TabItem Header="Diff" Style="{StaticResource OverlayTabItem}">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled">
+                                <RichTextBox x:Name="DiffText" Foreground="#E0E0E0"
                                              Background="Transparent" BorderBrush="Transparent"
-                                             CaretBrush="#6C63FF" IsReadOnly="True" IsDocumentEnabled="True"
+                                             IsReadOnly="True" IsDocumentEnabled="True"
                                              FontFamily="Segoe UI" FontSize="12" Padding="0"
                                              VerticalScrollBarVisibility="Disabled"
                                              HorizontalScrollBarVisibility="Disabled">

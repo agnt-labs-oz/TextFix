@@ -143,9 +143,6 @@ public partial class OverlayWindow : Window
             CorrectedText.BorderBrush = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x55, 0x55, 0x55));
             CorrectedText.BorderThickness = new Thickness(1);
             CorrectedText.Padding = new Thickness(6, 4, 6, 4);
-            // Diff markup is preserved here so the user can see what changed even
-            // in editable mode. RichTextBox edits styled text fine; on Apply we
-            // read plain text via TextRange, so styling never leaks downstream.
         }
         else
         {
@@ -156,38 +153,34 @@ public partial class OverlayWindow : Window
         }
     }
 
-    public string GetEditedText() => GetCorrectedDocumentText();
-
-    private void SetCorrectedPlainText(string text)
-    {
-        var doc = new System.Windows.Documents.FlowDocument();
-        var para = new System.Windows.Documents.Paragraph(
-            new System.Windows.Documents.Run(text ?? ""))
-        { Margin = new Thickness(0) };
-        doc.Blocks.Add(para);
-        CorrectedText.Document = doc;
-    }
+    public string GetEditedText() => CorrectedText.Text;
 
     private void RenderDiff(string original, string corrected)
     {
-        var diff = TextFix.Services.DiffEngine.Compute(original, corrected);
-        bool multiline = original.Contains('\n') || corrected.Contains('\n');
+        // Corrected tab is always plain editable text — the apply/copy source.
+        CorrectedText.Text = corrected;
 
+        // Diff tab is display-only: render colored inline diff regardless of multiline.
+        // Char-level ratio gating decides whether the diff is worth showing or noise.
+        var diff = TextFix.Services.DiffEngine.Compute(original, corrected);
         if (diff.Stats.CharChangeRatio > DiffMaxChangeRatio)
         {
-            // High change — diff would be noise. Just show corrected text.
-            SetCorrectedPlainText(corrected);
-            return;
-        }
-
-        if (multiline)
-        {
-            RenderUnifiedLineDiff(diff);   // implemented in Task 6
+            SetDiffPlainText("(Substantial rewrite — diff suppressed. Adjust threshold in Settings.)");
         }
         else
         {
             RenderInlineWordDiff(diff);
         }
+    }
+
+    private void SetDiffPlainText(string text)
+    {
+        var doc = new System.Windows.Documents.FlowDocument();
+        var para = new System.Windows.Documents.Paragraph(
+            new System.Windows.Documents.Run(text ?? ""))
+        { Margin = new Thickness(0), Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x88, 0x88, 0x88)) };
+        doc.Blocks.Add(para);
+        DiffText.Document = doc;
     }
 
     private static readonly WpfMedia.Brush EqualBrush =
@@ -227,27 +220,11 @@ public partial class OverlayWindow : Window
             para.Inlines.Add(run);
         }
         doc.Blocks.Add(para);
-        CorrectedText.Document = doc;
+        DiffText.Document = doc;
     }
 
-    private void RenderUnifiedLineDiff(TextFix.Services.DiffResult diff)
-    {
-        // Placeholder — implemented in Task 6. For now show plain corrected text.
-        var corrected = string.Concat(
-            diff.Segments
-                .Where(s => s.Kind != TextFix.Services.DiffKind.Removed)
-                .Select(s => s.Text));
-        SetCorrectedPlainText(corrected);
-    }
-
-    private string GetCorrectedDocumentText()
-    {
-        var range = new System.Windows.Documents.TextRange(
-            CorrectedText.Document.ContentStart,
-            CorrectedText.Document.ContentEnd);
-        // RichTextBox introduces a trailing "\r\n" — trim it so callers see plain text.
-        return range.Text.TrimEnd('\r', '\n');
-    }
+    // CorrectedText is a plain TextBox now — its .Text is what callers want.
+    // The trailing "\r\n" guard from the prior RichTextBox era is no longer needed.
 
     private void SetActionsEnabled(bool enabled)
     {
@@ -810,7 +787,7 @@ public partial class OverlayWindow : Window
         _historyVisible = false;
         HistoryPanel.Visibility = Visibility.Collapsed;
         // Use current (possibly edited) text from the editor
-        var text = GetCorrectedDocumentText();
+        var text = CorrectedText.Text;
         if (!string.IsNullOrEmpty(text))
             ReapplyRequested?.Invoke(text);
     }
