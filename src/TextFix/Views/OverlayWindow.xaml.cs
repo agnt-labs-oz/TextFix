@@ -143,10 +143,9 @@ public partial class OverlayWindow : Window
             CorrectedText.BorderBrush = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x55, 0x55, 0x55));
             CorrectedText.BorderThickness = new Thickness(1);
             CorrectedText.Padding = new Thickness(6, 4, 6, 4);
-
-            // Editing a styled diff document is confusing. Reset to plain text.
-            if (_currentResult is not null)
-                SetCorrectedPlainText(_currentResult.CorrectedText);
+            // Diff markup is preserved here so the user can see what changed even
+            // in editable mode. RichTextBox edits styled text fine; on Apply we
+            // read plain text via TextRange, so styling never leaks downstream.
         }
         else
         {
