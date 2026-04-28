@@ -33,6 +33,8 @@ public partial class OverlayWindow : Window
     // suppresses OnWindowSizeChanged captures of the intermediate transition sizes.
     private bool _suppressSizeCapture;
 
+    public double DiffMaxChangeRatio { get; set; } = 0.30;
+
     public event Action<bool>? UserResponded;
     public event Action? RetryRequested;
     public event Action? CopyRequested;
@@ -167,6 +169,78 @@ public partial class OverlayWindow : Window
         CorrectedText.Document = doc;
     }
 
+    private void RenderDiff(string original, string corrected)
+    {
+        var diff = TextFix.Services.DiffEngine.Compute(original, corrected);
+        bool multiline = original.Contains('\n') || corrected.Contains('\n');
+
+        if (diff.Stats.ChangeRatio > DiffMaxChangeRatio)
+        {
+            // High change — diff would be noise. Just show corrected text.
+            SetCorrectedPlainText(corrected);
+            return;
+        }
+
+        if (multiline)
+        {
+            RenderUnifiedLineDiff(diff);   // implemented in Task 6
+        }
+        else
+        {
+            RenderInlineWordDiff(diff);
+        }
+    }
+
+    private static readonly WpfMedia.Brush EqualBrush =
+        new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xE0, 0xE0, 0xE0));
+    private static readonly WpfMedia.Brush RemovedBrush =
+        new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xF8, 0x71, 0x71));
+    private static readonly WpfMedia.Brush AddedBrush =
+        new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x4A, 0xDE, 0x80));
+    private static readonly WpfMedia.Brush RemovedBg =
+        new WpfMedia.SolidColorBrush(WpfMedia.Color.FromArgb(0x1F, 0xF8, 0x71, 0x71));
+    private static readonly WpfMedia.Brush AddedBg =
+        new WpfMedia.SolidColorBrush(WpfMedia.Color.FromArgb(0x1F, 0x4A, 0xDE, 0x80));
+
+    private void RenderInlineWordDiff(TextFix.Services.DiffResult diff)
+    {
+        var doc = new System.Windows.Documents.FlowDocument();
+        var para = new System.Windows.Documents.Paragraph { Margin = new Thickness(0) };
+
+        foreach (var seg in diff.Segments)
+        {
+            var run = new System.Windows.Documents.Run(seg.Text);
+            switch (seg.Kind)
+            {
+                case TextFix.Services.DiffKind.Equal:
+                    run.Foreground = EqualBrush;
+                    break;
+                case TextFix.Services.DiffKind.Removed:
+                    run.Foreground = RemovedBrush;
+                    run.Background = RemovedBg;
+                    run.TextDecorations = System.Windows.TextDecorations.Strikethrough;
+                    break;
+                case TextFix.Services.DiffKind.Added:
+                    run.Foreground = AddedBrush;
+                    run.Background = AddedBg;
+                    break;
+            }
+            para.Inlines.Add(run);
+        }
+        doc.Blocks.Add(para);
+        CorrectedText.Document = doc;
+    }
+
+    private void RenderUnifiedLineDiff(TextFix.Services.DiffResult diff)
+    {
+        // Placeholder — implemented in Task 6. For now show plain corrected text.
+        var corrected = string.Concat(
+            diff.Segments
+                .Where(s => s.Kind != TextFix.Services.DiffKind.Removed)
+                .Select(s => s.Text));
+        SetCorrectedPlainText(corrected);
+    }
+
     private string GetCorrectedDocumentText()
     {
         var range = new System.Windows.Documents.TextRange(
@@ -285,7 +359,7 @@ public partial class OverlayWindow : Window
         var changeCount = CountChanges(result.OriginalText, result.CorrectedText);
         StatusText.Text = $"Fixed {changeCount} error{(changeCount == 1 ? "" : "s")}";
         OriginalText.Text = result.OriginalText;
-        SetCorrectedPlainText(result.CorrectedText);
+        RenderDiff(result.OriginalText, result.CorrectedText);
         ApplyEditableState(editable);
 
         Activate();
