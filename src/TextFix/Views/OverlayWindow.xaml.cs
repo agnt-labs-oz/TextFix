@@ -159,16 +159,16 @@ public partial class OverlayWindow : Window
         // Corrected tab is always plain editable text — the apply/copy source.
         CorrectedText.Text = corrected;
 
-        // Diff tab is display-only: always render. Multi-line corrections get the
-        // unified line-diff treatment (+/- gutters, per-line highlights); single-line
-        // corrections get the inline word diff. The Diff tab is opt-in so we don't
-        // suppress on high change ratio.
-        var diff = TextFix.Services.DiffEngine.Compute(original, corrected);
-        bool multiline = original.Contains('\n') || corrected.Contains('\n');
-        if (multiline)
-            RenderUnifiedLineDiff(diff);
-        else
-            RenderInlineWordDiff(diff);
+        // Diff tab is display-only: always render the inline word diff. Newlines
+        // in the segments flow through as line breaks in the FlowDocument, so
+        // multi-line corrections render the same way as single-line ones — just
+        // with the original line breaks preserved. Normalize CRLF first so a
+        // Windows-clipboard \r doesn't appear as a visible control glyph or
+        // cause every line to mismatch a \n-only AI output.
+        var diff = TextFix.Services.DiffEngine.Compute(
+            (original ?? "").Replace("\r\n", "\n").Replace("\r", "\n"),
+            (corrected ?? "").Replace("\r\n", "\n").Replace("\r", "\n"));
+        RenderInlineWordDiff(diff);
     }
 
     private static readonly WpfMedia.Brush EqualBrush =
@@ -209,163 +209,6 @@ public partial class OverlayWindow : Window
         }
         doc.Blocks.Add(para);
         DiffText.Document = doc;
-    }
-
-    private static readonly WpfMedia.Brush GutterBrush =
-        new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x88, 0x88, 0x88));
-    private static readonly WpfMedia.Brush RemovedHighlightBg =
-        new WpfMedia.SolidColorBrush(WpfMedia.Color.FromArgb(0x3F, 0xF8, 0x71, 0x71));
-    private static readonly WpfMedia.Brush AddedHighlightBg =
-        new WpfMedia.SolidColorBrush(WpfMedia.Color.FromArgb(0x3F, 0x4A, 0xDE, 0x80));
-
-    private void RenderUnifiedLineDiff(TextFix.Services.DiffResult diff)
-    {
-        // Step 1: rebuild original and corrected text from the word-level segments
-        // so we can do a *line-level* pass on top of the word-level diff.
-        var origText = string.Concat(
-            diff.Segments
-                .Where(s => s.Kind != TextFix.Services.DiffKind.Added)
-                .Select(s => s.Text));
-        var corrText = string.Concat(
-            diff.Segments
-                .Where(s => s.Kind != TextFix.Services.DiffKind.Removed)
-                .Select(s => s.Text));
-
-        // Normalize line endings — Windows clipboard text often arrives as \r\n while
-        // AI output is typically \n-only, which would otherwise cause every line to
-        // mismatch on the trailing \r and look as if the entire document was rewritten.
-        var origLines = origText.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
-        var corrLines = corrText.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
-
-        // Step 2: line-level LCS to classify each line as Equal/Removed/Added.
-        int n = origLines.Length, m = corrLines.Length;
-        var dp = new int[n + 1, m + 1];
-        for (int i = n - 1; i >= 0; i--)
-        {
-            for (int j = m - 1; j >= 0; j--)
-            {
-                if (origLines[i] == corrLines[j])
-                    dp[i, j] = dp[i + 1, j + 1] + 1;
-                else
-                    dp[i, j] = Math.Max(dp[i + 1, j], dp[i, j + 1]);
-            }
-        }
-
-        var lineOps = new List<(TextFix.Services.DiffKind kind, string text)>();
-        int x = 0, y = 0;
-        while (x < n && y < m)
-        {
-            if (origLines[x] == corrLines[y])
-            {
-                lineOps.Add((TextFix.Services.DiffKind.Equal, origLines[x]));
-                x++; y++;
-            }
-            else if (dp[x + 1, y] >= dp[x, y + 1])
-            {
-                lineOps.Add((TextFix.Services.DiffKind.Removed, origLines[x++]));
-            }
-            else
-            {
-                lineOps.Add((TextFix.Services.DiffKind.Added, corrLines[y++]));
-            }
-        }
-        while (x < n) lineOps.Add((TextFix.Services.DiffKind.Removed, origLines[x++]));
-        while (y < m) lineOps.Add((TextFix.Services.DiffKind.Added, corrLines[y++]));
-
-        // Step 3: build paragraphs. For paired removed-then-added lines,
-        // run an inner word diff to highlight just the changed words.
-        var doc = new System.Windows.Documents.FlowDocument(); // No PageWidth — auto-wrap to RichTextBox width.
-
-        for (int k = 0; k < lineOps.Count; k++)
-        {
-            var op = lineOps[k];
-
-            if (op.kind == TextFix.Services.DiffKind.Equal)
-            {
-                doc.Blocks.Add(BuildLineParagraph(
-                    gutter: "  ",
-                    inlines: new[] { MakeRun(op.text, EqualBrush, null, false) },
-                    lineBg: null));
-            }
-            else if (op.kind == TextFix.Services.DiffKind.Removed
-                     && k + 1 < lineOps.Count
-                     && lineOps[k + 1].kind == TextFix.Services.DiffKind.Added)
-            {
-                // Paired modify: inner word diff between the two lines.
-                var inner = TextFix.Services.DiffEngine.Compute(op.text, lineOps[k + 1].text);
-
-                var removedInlines = new List<System.Windows.Documents.Inline>();
-                var addedInlines = new List<System.Windows.Documents.Inline>();
-                foreach (var seg in inner.Segments)
-                {
-                    if (seg.Kind == TextFix.Services.DiffKind.Equal)
-                    {
-                        // Unchanged words within a modified line — neutral foreground, no
-                        // strikethrough. The line-level red/green background already signals
-                        // "this line changed"; only the differing words get the stronger highlight.
-                        removedInlines.Add(MakeRun(seg.Text, EqualBrush, null, false));
-                        addedInlines.Add(MakeRun(seg.Text, EqualBrush, null, false));
-                    }
-                    else if (seg.Kind == TextFix.Services.DiffKind.Removed)
-                    {
-                        removedInlines.Add(MakeRun(seg.Text, RemovedBrush, RemovedHighlightBg, true));
-                    }
-                    else // Added
-                    {
-                        addedInlines.Add(MakeRun(seg.Text, AddedBrush, AddedHighlightBg, false));
-                    }
-                }
-
-                doc.Blocks.Add(BuildLineParagraph("- ", removedInlines, RemovedBg));
-                doc.Blocks.Add(BuildLineParagraph("+ ", addedInlines, AddedBg));
-                k++; // we consumed the next op as the pair
-            }
-            else if (op.kind == TextFix.Services.DiffKind.Removed)
-            {
-                doc.Blocks.Add(BuildLineParagraph(
-                    gutter: "- ",
-                    inlines: new[] { MakeRun(op.text, RemovedBrush, null, true) },
-                    lineBg: RemovedBg));
-            }
-            else // Added (no preceding Removed)
-            {
-                doc.Blocks.Add(BuildLineParagraph(
-                    gutter: "+ ",
-                    inlines: new[] { MakeRun(op.text, AddedBrush, null, false) },
-                    lineBg: AddedBg));
-            }
-        }
-
-        DiffText.Document = doc;
-    }
-
-    private static System.Windows.Documents.Run MakeRun(
-        string text,
-        WpfMedia.Brush fg,
-        WpfMedia.Brush? bg,
-        bool strikethrough)
-    {
-        var run = new System.Windows.Documents.Run(text) { Foreground = fg };
-        if (bg is not null) run.Background = bg;
-        if (strikethrough) run.TextDecorations = System.Windows.TextDecorations.Strikethrough;
-        return run;
-    }
-
-    private static System.Windows.Documents.Paragraph BuildLineParagraph(
-        string gutter,
-        IEnumerable<System.Windows.Documents.Inline> inlines,
-        WpfMedia.Brush? lineBg)
-    {
-        var para = new System.Windows.Documents.Paragraph { Margin = new Thickness(0) };
-        if (lineBg is not null) para.Background = lineBg;
-        para.Inlines.Add(new System.Windows.Documents.Run(gutter)
-        {
-            Foreground = GutterBrush,
-            FontFamily = new WpfMedia.FontFamily("Consolas"),
-        });
-        foreach (var inline in inlines)
-            para.Inlines.Add(inline);
-        return para;
     }
 
     // CorrectedText is a plain TextBox now — its .Text is what callers want.
