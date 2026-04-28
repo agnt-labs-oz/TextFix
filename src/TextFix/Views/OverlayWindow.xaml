@@ -311,7 +311,7 @@
                                             <Setter Property="Margin" Value="0"/>
                                         </Style>
                                     </RichTextBox.Resources>
-                                    <FlowDocument PageWidth="2000"/>
+                                    <FlowDocument/>
                                 </RichTextBox>
                             </ScrollViewer>
                         </TabItem>

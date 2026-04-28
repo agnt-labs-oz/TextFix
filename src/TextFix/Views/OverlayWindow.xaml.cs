@@ -159,7 +159,7 @@ public partial class OverlayWindow : Window
 
     private void SetCorrectedPlainText(string text)
     {
-        var doc = new System.Windows.Documents.FlowDocument { PageWidth = 2000 };
+        var doc = new System.Windows.Documents.FlowDocument();
         var para = new System.Windows.Documents.Paragraph(
             new System.Windows.Documents.Run(text ?? ""))
         { Margin = new Thickness(0) };
