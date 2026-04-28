@@ -141,6 +141,10 @@ public partial class OverlayWindow : Window
             CorrectedText.BorderBrush = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x55, 0x55, 0x55));
             CorrectedText.BorderThickness = new Thickness(1);
             CorrectedText.Padding = new Thickness(6, 4, 6, 4);
+
+            // Editing a styled diff document is confusing. Reset to plain text.
+            if (_currentResult is not null)
+                SetCorrectedPlainText(_currentResult.CorrectedText);
         }
         else
         {
@@ -151,7 +155,26 @@ public partial class OverlayWindow : Window
         }
     }
 
-    public string GetEditedText() => CorrectedText.Text;
+    public string GetEditedText() => GetCorrectedDocumentText();
+
+    private void SetCorrectedPlainText(string text)
+    {
+        var doc = new System.Windows.Documents.FlowDocument { PageWidth = 2000 };
+        var para = new System.Windows.Documents.Paragraph(
+            new System.Windows.Documents.Run(text ?? ""))
+        { Margin = new Thickness(0) };
+        doc.Blocks.Add(para);
+        CorrectedText.Document = doc;
+    }
+
+    private string GetCorrectedDocumentText()
+    {
+        var range = new System.Windows.Documents.TextRange(
+            CorrectedText.Document.ContentStart,
+            CorrectedText.Document.ContentEnd);
+        // RichTextBox introduces a trailing "\r\n" — trim it so callers see plain text.
+        return range.Text.TrimEnd('\r', '\n');
+    }
 
     private void SetActionsEnabled(bool enabled)
     {
@@ -262,7 +285,7 @@ public partial class OverlayWindow : Window
         var changeCount = CountChanges(result.OriginalText, result.CorrectedText);
         StatusText.Text = $"Fixed {changeCount} error{(changeCount == 1 ? "" : "s")}";
         OriginalText.Text = result.OriginalText;
-        CorrectedText.Text = result.CorrectedText;
+        SetCorrectedPlainText(result.CorrectedText);
         ApplyEditableState(editable);
 
         Activate();
@@ -714,7 +737,7 @@ public partial class OverlayWindow : Window
         _historyVisible = false;
         HistoryPanel.Visibility = Visibility.Collapsed;
         // Use current (possibly edited) text from the editor
-        var text = CorrectedText.Text;
+        var text = GetCorrectedDocumentText();
         if (!string.IsNullOrEmpty(text))
             ReapplyRequested?.Invoke(text);
     }

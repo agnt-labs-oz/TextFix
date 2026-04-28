@@ -300,11 +300,19 @@
                         <TabItem Header="Corrected" Style="{StaticResource OverlayTabItem}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled">
-                                <TextBox x:Name="CorrectedText" Foreground="#E0E0E0"
-                                         Background="Transparent" BorderBrush="Transparent"
-                                         CaretBrush="#6C63FF" IsReadOnly="True"
-                                         FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
-                                         AcceptsReturn="True" Padding="0"/>
+                                <RichTextBox x:Name="CorrectedText" Foreground="#E0E0E0"
+                                             Background="Transparent" BorderBrush="Transparent"
+                                             CaretBrush="#6C63FF" IsReadOnly="True" IsDocumentEnabled="True"
+                                             FontFamily="Segoe UI" FontSize="12" Padding="0"
+                                             VerticalScrollBarVisibility="Disabled"
+                                             HorizontalScrollBarVisibility="Disabled">
+                                    <RichTextBox.Resources>
+                                        <Style TargetType="Paragraph">
+                                            <Setter Property="Margin" Value="0"/>
+                                        </Style>
+                                    </RichTextBox.Resources>
+                                    <FlowDocument PageWidth="2000"/>
+                                </RichTextBox>
                             </ScrollViewer>
                         </TabItem>
                         <TabItem Header="Original" Style="{StaticResource OverlayTabItem}">
