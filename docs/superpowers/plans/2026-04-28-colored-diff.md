@@ -535,7 +535,7 @@ In `src/TextFix/Views/OverlayWindow.xaml.cs`, add the following private helpers 
 ```csharp
 private void SetCorrectedPlainText(string text)
 {
-    var doc = new FlowDocument { PageWidth = 2000 };
+    var doc = new FlowDocument(); // No PageWidth — auto-wrap to RichTextBox width.
     var para = new System.Windows.Documents.Paragraph(
         new System.Windows.Documents.Run(text ?? ""))
     { Margin = new Thickness(0) };
@@ -704,7 +704,7 @@ private static readonly WpfMedia.Brush AddedBg =
 
 private void RenderInlineWordDiff(TextFix.Services.DiffResult diff)
 {
-    var doc = new FlowDocument { PageWidth = 2000 };
+    var doc = new FlowDocument(); // No PageWidth — auto-wrap to RichTextBox width.
     var para = new System.Windows.Documents.Paragraph { Margin = new Thickness(0) };
 
     foreach (var seg in diff.Segments)
@@ -855,7 +855,7 @@ private void RenderUnifiedLineDiff(TextFix.Services.DiffResult diff)
 
     // Step 3: build paragraphs. For paired removed-then-added lines,
     // run an inner word diff to highlight just the changed words.
-    var doc = new FlowDocument { PageWidth = 2000 };
+    var doc = new FlowDocument(); // No PageWidth — auto-wrap to RichTextBox width.
 
     for (int k = 0; k < lineOps.Count; k++)
     {
