@@ -154,7 +154,7 @@ public partial class OverlayWindow : Window
 
     public string GetEditedText() => CorrectedText.Text;
 
-    private void RenderDiff(string original, string corrected)
+    private TextFix.Services.DiffResult RenderDiff(string original, string corrected)
     {
         // Corrected tab is always plain editable text — the apply/copy source.
         CorrectedText.Text = corrected;
@@ -169,6 +169,7 @@ public partial class OverlayWindow : Window
             (original ?? "").Replace("\r\n", "\n").Replace("\r", "\n"),
             (corrected ?? "").Replace("\r\n", "\n").Replace("\r", "\n"));
         RenderInlineWordDiff(diff);
+        return diff;
     }
 
     private static readonly WpfMedia.Brush EqualBrush =
@@ -306,6 +307,9 @@ public partial class OverlayWindow : Window
         ResultPanel.Visibility = Visibility.Visible;
         ErrorPanel.Visibility = Visibility.Collapsed;
         InfoPanel.Visibility = Visibility.Collapsed;
+        // Always land on the editable Corrected tab. Without this the user can land on
+        // whichever tab was selected on the prior result.
+        DiffTabs.SelectedIndex = 0;
         SetResultSizing();
 
         // Restore Apply/Cancel in case ShowApplied hid them
@@ -320,10 +324,11 @@ public partial class OverlayWindow : Window
         StatusIcon.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x4A, 0xDE, 0x80));
         StatusText.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xE0, 0xE0, 0xE0));
 
-        var changeCount = CountChanges(result.OriginalText, result.CorrectedText);
-        StatusText.Text = $"Fixed {changeCount} error{(changeCount == 1 ? "" : "s")}";
         OriginalText.Text = result.OriginalText;
-        RenderDiff(result.OriginalText, result.CorrectedText);
+        var diff = RenderDiff(result.OriginalText, result.CorrectedText);
+        // Word-level Removed + Added segment counts — accurate even when words shift.
+        var changeCount = Math.Max(1, diff.Stats.RemovedWordCount + diff.Stats.AddedWordCount);
+        StatusText.Text = $"Fixed {changeCount} error{(changeCount == 1 ? "" : "s")}";
         ApplyEditableState(editable);
 
         Activate();
@@ -716,6 +721,7 @@ public partial class OverlayWindow : Window
         _history = history;
         StopAutoApply();
         StopSpinnerAnimation();
+        StopInlineSpinner();
         Opacity = 1;
 
         ProcessingPanel.Visibility = Visibility.Collapsed;
@@ -906,20 +912,5 @@ public partial class OverlayWindow : Window
             CopyButton.Content = original;
         };
         timer.Start();
-    }
-
-    private static int CountChanges(string original, string corrected)
-    {
-        var origWords = original.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var corrWords = corrected.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        int changes = 0;
-        int maxLen = Math.Max(origWords.Length, corrWords.Length);
-        for (int i = 0; i < maxLen; i++)
-        {
-            if (i >= origWords.Length || i >= corrWords.Length ||
-                !string.Equals(origWords[i], corrWords[i], StringComparison.Ordinal))
-                changes++;
-        }
-        return Math.Max(changes, 1);
     }
 }

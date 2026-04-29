@@ -4,3 +4,5 @@ obj/
 *.user
 *.suo
 .superpowers/
+.idea/
+.claude/settings.local.json

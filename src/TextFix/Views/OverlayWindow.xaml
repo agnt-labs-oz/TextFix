@@ -424,15 +424,19 @@
             <StackPanel x:Name="ActionRowPanel" Grid.Row="2" Orientation="Horizontal"
                         Visibility="Collapsed" Margin="0,8,0,0">
                 <Button x:Name="RedoOrigButton" Content="&#x21BB; Original"
+                        AutomationProperties.Name="Redo from original"
                         Background="#2A2A3E" Foreground="#AAAAAA"
                         Style="{StaticResource SmallActionButton}" Click="OnActionRedoOriginal"/>
                 <Button x:Name="RedoRefineButton" Content="&#x21BB; Refine"
+                        AutomationProperties.Name="Refine current correction"
                         Background="#2A2A3E" Foreground="#AAAAAA"
                         Style="{StaticResource SmallActionButton}" Click="OnActionRedoRefine"/>
                 <Button x:Name="CopyButton" Content="&#x2398; Copy"
+                        AutomationProperties.Name="Copy corrected text"
                         Background="#2A2A3E" Foreground="#AAAAAA"
                         Style="{StaticResource SmallActionButton}" Click="OnActionCopy"/>
                 <Button x:Name="HistoryToggleButton" Content="&#x29D6; History"
+                        AutomationProperties.Name="Toggle history panel"
                         Background="#2A2A3E" Foreground="#AAAAAA"
                         Style="{StaticResource SmallActionButton}" Click="OnActionHistoryToggle"/>
             </StackPanel>

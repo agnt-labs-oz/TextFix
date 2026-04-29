@@ -161,8 +161,10 @@
                          Style="{StaticResource FieldBox}" Visibility="Collapsed"
                          IsReadOnly="True"/>
                 <Button Grid.Column="1" Content="&#x1F441;" Style="{StaticResource SmallButton}"
+                        AutomationProperties.Name="Show or hide API key"
                         ToolTip="Show / hide key" Click="OnToggleKeyVisibility" Margin="4,0,0,0"/>
                 <Button Grid.Column="2" Content="&#x1F4CB;" Style="{StaticResource SmallButton}"
+                        AutomationProperties.Name="Copy API key to clipboard"
                         ToolTip="Copy key" Click="OnCopyKey" Margin="4,0,0,0"/>
             </Grid>
         </StackPanel>

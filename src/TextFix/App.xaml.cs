@@ -47,8 +47,10 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        // Single instance check
-        _mutex = new Mutex(true, @"Local\TextFix_SingleInstance", out bool isNew);
+        // Single instance check — include the user SID so a same-session low-integrity
+        // process can't squat on the well-known name and lock us out.
+        var sid = System.Security.Principal.WindowsIdentity.GetCurrent().User?.Value ?? "anon";
+        _mutex = new Mutex(true, $@"Local\TextFix_SingleInstance_{sid}", out bool isNew);
         if (!isNew)
         {
             MessageBox.Show("TextFix is already running.", "TextFix",
@@ -333,7 +335,7 @@ public partial class App : Application
         {
             LogError(ex);
             _overlay?.ShowProcessing(_settings.ActiveModeName);
-            _overlay?.ShowResult(CorrectionResult.Error("", "An unexpected error occurred."), 0);
+            _overlay?.ShowResult(CorrectionResult.Error("", "Something went wrong — try again, or check your API key in Settings."), 0);
         }
         finally
         {
@@ -358,7 +360,7 @@ public partial class App : Application
         {
             LogError(ex);
             _overlay?.ShowProcessing(_settings.ActiveModeName);
-            _overlay?.ShowResult(CorrectionResult.Error(text, "An unexpected error occurred."), 0);
+            _overlay?.ShowResult(CorrectionResult.Error(text, "Something went wrong — try again, or check your API key in Settings."), 0);
         }
         finally
         {
@@ -456,7 +458,7 @@ public partial class App : Application
             LogError(ex);
             LogDebug($"Hotkey handler exception: {ex.Message}");
             _overlay?.ShowProcessing(_settings.ActiveModeName);
-            _overlay?.ShowResult(CorrectionResult.Error("", "An unexpected error occurred."), 0);
+            _overlay?.ShowResult(CorrectionResult.Error("", "Something went wrong — try again, or check your API key in Settings."), 0);
         }
         finally
         {
@@ -518,6 +520,7 @@ public partial class App : Application
         {
             RebuildServices();
             RegisterHotkey();
+            RebuildModeMenus();
             SyncTrayState();
         }
     }

@@ -32,11 +32,14 @@ public class CorrectionHistory
     {
         get
         {
-            var todayUtc = DateTime.UtcNow.Date;
+            // Timestamps are stored in UTC; "today" means the user's local today,
+            // so convert before comparing — otherwise the count rolls over at UTC
+            // midnight, not local midnight (off by up to a day in Australia).
+            var todayLocal = DateTime.Now.Date;
             int count = 0;
             foreach (var item in _items)
             {
-                if (item.Timestamp.Date == todayUtc)
+                if (item.Timestamp.ToLocalTime().Date == todayLocal)
                     count++;
             }
             return count;
