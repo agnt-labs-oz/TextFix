@@ -86,7 +86,10 @@ public sealed class StatsTracker
                 perMode.TryGetValue(entry.Mode, out var n);
                 perMode[entry.Mode] = n + 1;
             }
-            if (entry.Timestamp.Year == year && entry.Timestamp.Month == month)
+            // Normalize to UTC so a Local/Unspecified timestamp from a hand-edited line doesn't
+            // shift entries into the wrong month for users east of UTC near month boundaries.
+            var ts = entry.Timestamp.ToUniversalTime();
+            if (ts.Year == year && ts.Month == month)
                 monthCost += entry.CostEstimate;
         }
 
