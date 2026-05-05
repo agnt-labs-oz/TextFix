@@ -28,6 +28,7 @@ public partial class App : Application
     }
 
     private static Mutex? _mutex;
+    private static AppLog? _log;
     private NotifyIcon? _trayIcon;
     private ToolStripMenuItem? _historyMenu;
     private HotkeyListener? _hotkeyListener;
@@ -68,6 +69,14 @@ public partial class App : Application
         };
 
         _settings = await AppSettings.LoadAsync();
+
+        var logDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "TextFix", "logs");
+        var level = Enum.TryParse<AppLog.Level>(_settings.LogLevel, ignoreCase: true, out var lvl)
+            ? lvl : AppLog.Level.Warn;
+        _log = new AppLog(logDir, level);
+        _log.Info($"TextFix starting (version {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version})");
 
         CreateHiddenWindow();
         SetupTrayIcon();
@@ -568,6 +577,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _log?.Info("TextFix exiting");
         _keepAliveTimer?.Stop();
         _hotkeyListener?.Dispose();
         _trayIcon?.Dispose();
@@ -576,32 +586,8 @@ public partial class App : Application
         base.OnExit(e);
     }
 
-    private static void LogError(Exception ex)
-    {
-        try
-        {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "TextFix");
-            Directory.CreateDirectory(dir);
-            var logPath = Path.Combine(dir, "error.log");
-            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] {ex}\n\n");
-        }
-        catch { /* best effort */ }
-    }
+    private static void LogError(Exception ex) => _log?.Error("Unhandled", ex);
 
     [System.Diagnostics.Conditional("DEBUG")]
-    private static void LogDebug(string message)
-    {
-        try
-        {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "TextFix");
-            Directory.CreateDirectory(dir);
-            var logPath = Path.Combine(dir, "debug.log");
-            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] {message}\n");
-        }
-        catch { /* best effort */ }
-    }
+    private static void LogDebug(string message) => _log?.Info(message);
 }
