@@ -6,3 +6,4 @@ obj/
 .superpowers/
 .idea/
 .claude/settings.local.json
+.worktrees/
