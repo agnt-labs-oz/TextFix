@@ -72,6 +72,7 @@ public class AiClient
             {
                 OriginalText = text,
                 CorrectedText = corrected,
+                Model = _settings.Model,
                 InputTokens = (int)(message.Usage?.InputTokens ?? 0),
                 OutputTokens = (int)(message.Usage?.OutputTokens ?? 0),
             };
