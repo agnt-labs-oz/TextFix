@@ -8,10 +8,6 @@ public class CorrectionHistory
     private readonly List<CorrectionResult> _items = [];
     private const int MaxItems = 50;
 
-    // Haiku pricing: $0.80/M input, $4.00/M output
-    private const decimal InputCostPerToken = 0.80m / 1_000_000m;
-    private const decimal OutputCostPerToken = 4.00m / 1_000_000m;
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,
@@ -52,8 +48,8 @@ public class CorrectionHistory
             return;
 
         TotalCount++;
-        SessionCost += result.InputTokens * InputCostPerToken
-                     + result.OutputTokens * OutputCostPerToken;
+        SessionCost += TextFix.Services.CostEstimator.Estimate(
+            result.Model, result.InputTokens, result.OutputTokens);
 
         _items.Insert(0, result);
 
