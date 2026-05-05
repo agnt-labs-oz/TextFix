@@ -33,15 +33,17 @@ public sealed class AppLog
             {
                 Directory.CreateDirectory(_dir);
 
-                var today = DateTime.Now.Date;
-                if (_lastCleanupDate != today)
+                // Use UTC for filenames, line timestamps, and retention so dates always agree
+                // and DST/clock-skew can't shift records into the wrong file.
+                var todayUtc = DateTime.UtcNow.Date;
+                if (_lastCleanupDate < todayUtc)
                 {
                     CleanupOldLogs();
-                    _lastCleanupDate = today;
+                    _lastCleanupDate = todayUtc;
                 }
 
-                var path = Path.Combine(_dir, $"textfix-{today:yyyy-MM-dd}.log");
-                var line = $"[{DateTime.UtcNow:o}] [{level.ToString().ToUpperInvariant()}] {message}";
+                var path = Path.Combine(_dir, $"textfix-{todayUtc:yyyy-MM-dd}.log");
+                var line = $"[{DateTime.UtcNow:o}] [T{Environment.CurrentManagedThreadId,3}] [{level.ToString().ToUpperInvariant()}] {message}";
                 if (ex is not null)
                     line += Environment.NewLine + ex;
                 File.AppendAllText(path, line + Environment.NewLine);
@@ -55,12 +57,12 @@ public sealed class AppLog
 
     private void CleanupOldLogs()
     {
-        var cutoff = DateTime.Now.AddDays(-7);
+        var cutoff = DateTime.UtcNow.AddDays(-7);
         foreach (var file in Directory.EnumerateFiles(_dir, "textfix-*.log"))
         {
             try
             {
-                if (File.GetLastWriteTime(file) < cutoff)
+                if (File.GetLastWriteTimeUtc(file) < cutoff)
                     File.Delete(file);
             }
             catch { /* best effort */ }

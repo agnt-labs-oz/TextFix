@@ -23,7 +23,7 @@ public class AppLogTests : IDisposable
     {
         var log = new AppLog(_logDir, AppLog.Level.Info);
         log.Info("hello");
-        var expected = Path.Combine(_logDir, $"textfix-{DateTime.Now:yyyy-MM-dd}.log");
+        var expected = Path.Combine(_logDir, $"textfix-{DateTime.UtcNow:yyyy-MM-dd}.log");
         Assert.True(File.Exists(expected));
     }
 
@@ -32,7 +32,7 @@ public class AppLogTests : IDisposable
     {
         var log = new AppLog(_logDir, AppLog.Level.Warn);
         log.Info("ignored");
-        var expected = Path.Combine(_logDir, $"textfix-{DateTime.Now:yyyy-MM-dd}.log");
+        var expected = Path.Combine(_logDir, $"textfix-{DateTime.UtcNow:yyyy-MM-dd}.log");
         Assert.False(File.Exists(expected));
     }
 
@@ -41,7 +41,7 @@ public class AppLogTests : IDisposable
     {
         var log = new AppLog(_logDir, AppLog.Level.Warn);
         log.Warn("kept");
-        var expected = Path.Combine(_logDir, $"textfix-{DateTime.Now:yyyy-MM-dd}.log");
+        var expected = Path.Combine(_logDir, $"textfix-{DateTime.UtcNow:yyyy-MM-dd}.log");
         var contents = File.ReadAllText(expected);
         Assert.Contains("[WARN]", contents);
         Assert.Contains("kept", contents);
@@ -54,19 +54,28 @@ public class AppLogTests : IDisposable
         try { throw new InvalidOperationException("boom"); }
         catch (Exception ex) { log.Error("context", ex); }
 
-        var contents = File.ReadAllText(Path.Combine(_logDir, $"textfix-{DateTime.Now:yyyy-MM-dd}.log"));
+        var contents = File.ReadAllText(Path.Combine(_logDir, $"textfix-{DateTime.UtcNow:yyyy-MM-dd}.log"));
         Assert.Contains("[ERROR]", contents);
         Assert.Contains("context", contents);
         Assert.Contains("InvalidOperationException", contents);
     }
 
     [Fact]
+    public void Write_LineIncludesThreadId()
+    {
+        var log = new AppLog(_logDir, AppLog.Level.Info);
+        log.Info("hello");
+        var contents = File.ReadAllText(Path.Combine(_logDir, $"textfix-{DateTime.UtcNow:yyyy-MM-dd}.log"));
+        Assert.Matches(@"\[T\s*\d+\]", contents);
+    }
+
+    [Fact]
     public void Cleanup_DeletesFilesOlderThan7Days()
     {
-        var oldDate = DateTime.Now.AddDays(-10);
+        var oldDate = DateTime.UtcNow.AddDays(-10);
         var oldFile = Path.Combine(_logDir, $"textfix-{oldDate:yyyy-MM-dd}.log");
         File.WriteAllText(oldFile, "ancient");
-        File.SetLastWriteTime(oldFile, oldDate);
+        File.SetLastWriteTimeUtc(oldFile, oldDate);
 
         var log = new AppLog(_logDir, AppLog.Level.Info);
         log.Info("today");
@@ -77,10 +86,10 @@ public class AppLogTests : IDisposable
     [Fact]
     public void Cleanup_KeepsFilesWithinLast7Days()
     {
-        var recentDate = DateTime.Now.AddDays(-3);
+        var recentDate = DateTime.UtcNow.AddDays(-3);
         var recentFile = Path.Combine(_logDir, $"textfix-{recentDate:yyyy-MM-dd}.log");
         File.WriteAllText(recentFile, "recent");
-        File.SetLastWriteTime(recentFile, recentDate);
+        File.SetLastWriteTimeUtc(recentFile, recentDate);
 
         var log = new AppLog(_logDir, AppLog.Level.Info);
         log.Info("today");
