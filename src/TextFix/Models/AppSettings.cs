@@ -30,6 +30,7 @@ public class AppSettings
     public int OverlayAutoApplySeconds { get; set; } = 3;
     public bool ManualApplyOnly { get; set; }
     public bool StartWithWindows { get; set; }
+    public string LogLevel { get; set; } = "Warn";
 
     public string ActiveModeName { get; set; } = "Fix errors";
 
