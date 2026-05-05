@@ -132,8 +132,10 @@ public class CorrectionHistoryTests
             InputTokens = 1000,
             OutputTokens = 500,
             ModeName = "Fix errors",
+            Model = "claude-haiku-4-5-20251001",
         });
-        Assert.True(history.SessionCost > 0);
+        // Haiku: 1000 in × $1/M + 500 out × $5/M = $0.001 + $0.0025 = $0.0035
+        Assert.Equal(0.0035m, history.SessionCost);
     }
 
     [Fact]
