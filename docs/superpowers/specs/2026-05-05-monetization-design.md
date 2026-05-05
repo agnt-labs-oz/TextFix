@@ -60,7 +60,7 @@ Quit
 
 ### Stats storage
 
-- New file: `%APPDATA%/TextFix/stats.json` — JSONL, one line appended per correction:
+- New file: `%APPDATA%/TextFix/stats.jsonl` — line-delimited JSON, one line appended per correction:
   ```json
   {"timestamp":"2026-05-05T12:34:56Z","mode":"Fix errors","provider":"anthropic","model":"claude-haiku-4-5","chars_in":120,"chars_out":118,"tokens_in":45,"tokens_out":44,"cost_estimate":0.00021,"status":"success"}
   ```
