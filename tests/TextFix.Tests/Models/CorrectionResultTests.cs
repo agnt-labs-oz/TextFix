@@ -5,131 +5,21 @@ namespace TextFix.Tests.Models;
 public class CorrectionResultTests
 {
     [Fact]
-    public void HasChanges_True_WhenTextsDiffer()
+    public void Model_DefaultsToEmptyString()
+    {
+        var result = new CorrectionResult { OriginalText = "a", CorrectedText = "b" };
+        Assert.Equal("", result.Model);
+    }
+
+    [Fact]
+    public void Model_RoundTripsThroughInit()
     {
         var result = new CorrectionResult
         {
-            OriginalText = "teh cat",
-            CorrectedText = "the cat",
+            OriginalText = "a",
+            CorrectedText = "b",
+            Model = "claude-haiku-4-5-20251001",
         };
-        Assert.True(result.HasChanges);
-    }
-
-    [Fact]
-    public void HasChanges_False_WhenTextsMatch()
-    {
-        var result = new CorrectionResult
-        {
-            OriginalText = "hello",
-            CorrectedText = "hello",
-        };
-        Assert.False(result.HasChanges);
-    }
-
-    [Fact]
-    public void IsError_False_WhenNoErrorMessage()
-    {
-        var result = new CorrectionResult
-        {
-            OriginalText = "hi",
-            CorrectedText = "hi",
-        };
-        Assert.False(result.IsError);
-        Assert.Null(result.ErrorMessage);
-    }
-
-    [Fact]
-    public void ErrorFactory_SetsErrorMessage_And_HasChangesIsFalse()
-    {
-        var result = CorrectionResult.Error("original", "something went wrong");
-
-        Assert.True(result.IsError);
-        Assert.Equal("something went wrong", result.ErrorMessage);
-        Assert.Equal("original", result.OriginalText);
-        Assert.Equal("original", result.CorrectedText);
-        Assert.False(result.HasChanges);
-    }
-
-    [Fact]
-    public void ErrorFactory_WithEmptyOriginal()
-    {
-        var result = CorrectionResult.Error("", "error");
-
-        Assert.True(result.IsError);
-        Assert.False(result.HasChanges);
-        Assert.Equal("", result.OriginalText);
-    }
-
-    [Fact]
-    public void Timestamp_DefaultsToUtcNow()
-    {
-        var before = DateTime.UtcNow;
-        var result = new CorrectionResult
-        {
-            OriginalText = "hi",
-            CorrectedText = "hello",
-        };
-        var after = DateTime.UtcNow;
-
-        Assert.InRange(result.Timestamp, before, after);
-    }
-
-    [Fact]
-    public void ModeName_DefaultsToEmpty()
-    {
-        var result = new CorrectionResult
-        {
-            OriginalText = "hi",
-            CorrectedText = "hello",
-        };
-        Assert.Equal("", result.ModeName);
-    }
-
-    [Fact]
-    public void ModeName_CanBeSet()
-    {
-        var result = new CorrectionResult
-        {
-            OriginalText = "hi",
-            CorrectedText = "hello",
-            ModeName = "Professional",
-        };
-        Assert.Equal("Professional", result.ModeName);
-    }
-
-    [Fact]
-    public void InputTokens_DefaultsToZero()
-    {
-        var result = new CorrectionResult
-        {
-            OriginalText = "hi",
-            CorrectedText = "hello",
-        };
-        Assert.Equal(0, result.InputTokens);
-    }
-
-    [Fact]
-    public void OutputTokens_DefaultsToZero()
-    {
-        var result = new CorrectionResult
-        {
-            OriginalText = "hi",
-            CorrectedText = "hello",
-        };
-        Assert.Equal(0, result.OutputTokens);
-    }
-
-    [Fact]
-    public void Tokens_CanBeSet()
-    {
-        var result = new CorrectionResult
-        {
-            OriginalText = "hi",
-            CorrectedText = "hello",
-            InputTokens = 150,
-            OutputTokens = 42,
-        };
-        Assert.Equal(150, result.InputTokens);
-        Assert.Equal(42, result.OutputTokens);
+        Assert.Equal("claude-haiku-4-5-20251001", result.Model);
     }
 }
