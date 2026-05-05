@@ -163,8 +163,8 @@ This phase is intentionally a sketch. Real spec to be written after Phase 2.
 
 ---
 
-## Open Questions
+## Resolved Implementation Inputs
 
-- **Ko-fi URL** — to be confirmed before Phase 1 implementation begins.
-- **Repo Discussions categories** — proposed list above (Ideas, Bugs, Q&A, Show & Tell); confirm before enabling.
-- **Per-model cost rates** — pull current published prices for the supported models when implementing the cost estimator.
+- **Ko-fi URL:** `https://ko-fi.com/3smallwins`
+- **Discussions categories:** Ideas, Bugs, Q&A, Show & Tell
+- **Per-model cost rates:** pull current published prices for the supported models (Haiku 4.5, Sonnet 4.5/4.6, Opus 4.6) at implementation time.
