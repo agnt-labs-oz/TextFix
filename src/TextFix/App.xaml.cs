@@ -27,6 +27,13 @@ public partial class App : Application
         app.Run();
     }
 
+    private const string KofiUrl = "https://ko-fi.com/3smallwins";
+    private const string GitHubRepoUrl = "https://github.com/agnt-labs-oz/TextFix";
+    private const string GitHubNewIssueUrl =
+        "https://github.com/agnt-labs-oz/TextFix/issues/new?template=bug_report.yml";
+    private const string GitHubNewIdeaUrl =
+        "https://github.com/agnt-labs-oz/TextFix/discussions/new?category=ideas";
+
     private static Mutex? _mutex;
     private static AppLog? _log;
     private NotifyIcon? _trayIcon;
@@ -192,6 +199,13 @@ public partial class App : Application
         _trayIcon.ContextMenuStrip.Items.Add("Copy Last Correction", null, (_, _) => CopyLastCorrection());
         _trayIcon.ContextMenuStrip.Items.Add("Settings", null, (_, _) => OpenSettings());
         _trayIcon.ContextMenuStrip.Items.Add("Check for updates…", null, OnCheckForUpdatesClicked);
+        _trayIcon.ContextMenuStrip.Items.Add("-");
+        _trayIcon.ContextMenuStrip.Items.Add("Suggest a feature…", null, (_, _) => OpenUrl(GitHubNewIdeaUrl));
+        _trayIcon.ContextMenuStrip.Items.Add("Report an issue…", null, (_, _) => OpenUrl(GitHubNewIssueUrl));
+        _trayIcon.ContextMenuStrip.Items.Add("Open log folder", null, (_, _) => OpenLogFolder());
+        _trayIcon.ContextMenuStrip.Items.Add("-");
+        _trayIcon.ContextMenuStrip.Items.Add("About TextFix…", null, (_, _) => OpenAbout());
+        _trayIcon.ContextMenuStrip.Items.Add("Support TextFix ☕", null, (_, _) => OpenUrl(KofiUrl));
         _trayIcon.ContextMenuStrip.Items.Add("-");
         _trayIcon.ContextMenuStrip.Items.Add("Exit", null, (_, _) => Shutdown());
     }
@@ -584,6 +598,32 @@ public partial class App : Application
         _hiddenWindow?.Close();
         _mutex?.Dispose();
         base.OnExit(e);
+    }
+
+    private static void OpenUrl(string url)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception ex) { _log?.Warn($"OpenUrl failed: {ex.Message}"); }
+    }
+
+    private void OpenLogFolder()
+    {
+        try
+        {
+            var logDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "TextFix", "logs");
+            Directory.CreateDirectory(logDir);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", logDir) { UseShellExecute = true });
+        }
+        catch (Exception ex) { _log?.Warn($"OpenLogFolder failed: {ex.Message}"); }
+    }
+
+    private void OpenAbout()
+    {
+        if (_statsTracker is null) return;
+        var window = new Views.AboutWindow(_statsTracker);
+        window.ShowDialog();
     }
 
     private static void LogError(Exception ex) => _log?.Error("Unhandled", ex);
