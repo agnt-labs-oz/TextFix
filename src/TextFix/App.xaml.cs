@@ -37,6 +37,7 @@ public partial class App : Application
     private FocusTracker? _focusTracker;
     private OverlayWindow? _overlay;
     private UpdateService? _updateService;
+    private StatsTracker? _statsTracker;
     private AppSettings _settings = new();
     private int _isBusy;
     private System.Windows.Threading.DispatcherTimer? _keepAliveTimer;
@@ -377,6 +378,7 @@ public partial class App : Application
             _aiClient = new AiClient(_settings);
 
         var history = await CorrectionHistory.LoadAsync();
+        _statsTracker = new StatsTracker(StatsTracker.DefaultPath);
         _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!, _settings, history);
 
         _correctionService.ProcessingStarted += () =>
@@ -389,6 +391,8 @@ public partial class App : Application
                 _overlay?.ShowResult(result, autoApply, _settings.ManualApplyOnly);
                 RefreshHistoryMenu();
                 await _correctionService.History.SaveAsync();
+                if (_statsTracker is not null)
+                    await _statsTracker.RecordAsync(result);
             });
 
         _correctionService.ErrorOccurred += msg =>
