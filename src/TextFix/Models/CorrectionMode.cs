@@ -36,6 +36,8 @@ public record CorrectionMode
             Name = "Expand",
             SystemPrompt = "Expand the following text to be more detailed and descriptive while preserving the original meaning. Fix any errors. Return only the expanded text with no explanation." + PreserveEmoji,
         },
+        // No emoji preservation — this mode rewrites informal text into a structured
+        // technical prompt, where preserving conversational emoticons would be wrong.
         new()
         {
             Name = "Prompt enhancer",

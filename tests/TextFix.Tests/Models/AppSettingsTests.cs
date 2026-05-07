@@ -30,6 +30,33 @@ public class AppSettingsTests : IDisposable
         Assert.Equal(3, settings.OverlayAutoApplySeconds);
         Assert.False(settings.StartWithWindows);
         Assert.Equal("Fix errors", settings.ActiveModeName);
+        Assert.Equal(10, settings.HistoryMaxItems);
+    }
+
+    [Fact]
+    public async Task Load_DefaultsHistoryMaxItems_WhenPropertyAbsentFromOldFile()
+    {
+        // Settings files written before HistoryMaxItems existed don't include the key —
+        // System.Text.Json deserialises that as 0 (int default), which would clamp the
+        // history ring buffer to a single entry. Verify the load path repairs it.
+        var path = Path.Combine(_tempDir, "old.json");
+        await File.WriteAllTextAsync(path, """{"Hotkey":"Ctrl+Shift+Z","Model":"claude-haiku-4-5-20251001"}""");
+
+        var settings = await AppSettings.LoadAsync(path);
+
+        Assert.Equal(10, settings.HistoryMaxItems);
+    }
+
+    [Fact]
+    public async Task Load_PreservesValidHistoryMaxItems()
+    {
+        var path = Path.Combine(_tempDir, "settings.json");
+        var saved = new AppSettings { HistoryMaxItems = 25 };
+        await saved.SaveAsync(path);
+
+        var loaded = await AppSettings.LoadAsync(path);
+
+        Assert.Equal(25, loaded.HistoryMaxItems);
     }
 
     [Fact]

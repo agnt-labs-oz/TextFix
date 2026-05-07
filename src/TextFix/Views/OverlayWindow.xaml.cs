@@ -51,7 +51,10 @@ public partial class OverlayWindow : Window
     public OverlayWindow()
     {
         InitializeComponent();
-        KeyDown += OnKeyDown;
+        // Tunnelling — the editable Corrected TextBox has AcceptsReturn="True" and would
+        // swallow Enter on the bubbling KeyDown route, breaking the "Enter to dismiss / apply"
+        // contract advertised in the action buttons and the Applied-state hint.
+        PreviewKeyDown += OnKeyDown;
         PopulateModes();
     }
 
@@ -957,10 +960,14 @@ public partial class OverlayWindow : Window
         // Only meaningful in the manually-sized result view; idle/error/info are pill-sized.
         if (SizeToContent != SizeToContent.Manual) return;
 
+        var oldHeight = ActualHeight > 0 ? ActualHeight : Height;
+        // Layout hasn't settled yet — Height may still be NaN before SetResultSizing's
+        // dispatcher tick lands. Bail rather than do `Top -= 200` and fling the window offscreen.
+        if (double.IsNaN(oldHeight) || oldHeight <= 0) return;
+
         // Anchor the bottom edge — the action row should stay where it is while the
         // diff/text portion above it "rolls" up out of view.
         _suppressSizeCapture = true;
-        var oldHeight = ActualHeight > 0 ? ActualHeight : Height;
         double newHeight;
         if (!_collapsed)
         {
@@ -977,6 +984,10 @@ public partial class OverlayWindow : Window
         }
         Height = newHeight;
         Top += (oldHeight - newHeight);
+        // Resize affordance only makes sense when expanded — collapsing while the user
+        // can also drag-resize would silently discard the drag (OnWindowSizeChanged skips
+        // capture while _collapsed is true).
+        ResizeGrip.Visibility = _collapsed ? Visibility.Collapsed : Visibility.Visible;
         UpdateCollapseButtonLabel();
         Dispatcher.InvokeAsync(() =>
         {

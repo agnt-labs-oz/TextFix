@@ -194,7 +194,8 @@ public partial class App : Application
         if (modeName is null) return;
 
         _settings.ActiveModeName = modeName;
-        await _settings.SaveAsync();
+        try { await _settings.SaveAsync(); }
+        catch (Exception ex) { LogError(ex); }
 
         // Update checkmarks
         if (_trayIcon?.ContextMenuStrip?.Items[0] is ToolStripMenuItem modeMenu)
@@ -311,7 +312,8 @@ public partial class App : Application
     private async void OnOverlayModeChanged(string modeName)
     {
         _settings.ActiveModeName = modeName;
-        await _settings.SaveAsync();
+        try { await _settings.SaveAsync(); }
+        catch (Exception ex) { LogError(ex); }
         SyncTrayState();
     }
 
@@ -473,29 +475,36 @@ public partial class App : Application
         LogDebug($"UserResponded: apply={apply}");
         if (_correctionService is null) return;
 
-        if (apply && _correctionService.LastResult is not null)
+        // Wrap the whole body — async void + unhandled exception = silent process termination.
+        try
         {
-            // If user edited the text in manual mode, apply their edit rather than the original AI output.
-            // TrimEnd comparison so a stray trailing newline from AcceptsReturn doesn't count as an edit.
-            var edited = _overlay?.GetEditedText();
-            var original = _correctionService.LastResult.CorrectedText;
-            var resultToApply = edited is not null && edited.TrimEnd() != original.TrimEnd()
-                ? _correctionService.LastResult with { CorrectedText = edited }
-                : _correctionService.LastResult;
+            if (apply && _correctionService.LastResult is not null)
+            {
+                // If user edited the text in manual mode, apply their edit rather than the original AI output.
+                // TrimEnd comparison so a stray trailing newline from AcceptsReturn doesn't count as an edit.
+                var edited = _overlay?.GetEditedText();
+                var original = _correctionService.LastResult.CorrectedText;
+                var resultToApply = edited is not null && edited.TrimEnd() != original.TrimEnd()
+                    ? _correctionService.LastResult with { CorrectedText = edited }
+                    : _correctionService.LastResult;
 
-            LogDebug("Applying correction");
-            await _correctionService.ApplyCorrectionAsync(resultToApply);
-            LogDebug("ApplyCorrectionAsync done");
+                LogDebug("Applying correction");
+                await _correctionService.ApplyCorrectionAsync(resultToApply);
+                LogDebug("ApplyCorrectionAsync done");
 
-            // Always show applied state — unified dialog with diff, mode selector, redo
-            if (_correctionService is not null)
+                // Always show applied state — unified dialog with diff, mode selector, redo
                 _overlay?.SetHistory(_correctionService.History);
-            _overlay?.ShowApplied();
+                _overlay?.ShowApplied();
+            }
+            else
+            {
+                LogDebug("Cancelling correction");
+                await _correctionService.CancelAndRestoreAsync();
+            }
         }
-        else
+        catch (Exception ex)
         {
-            LogDebug("Cancelling correction");
-            await _correctionService.CancelAndRestoreAsync();
+            LogError(ex);
         }
     }
 
