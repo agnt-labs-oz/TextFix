@@ -10,6 +10,7 @@ namespace TextFix.Views;
 public partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
+    private readonly CorrectionHistory? _history;
     private bool _keyVisible;
 
     public static readonly string[] KnownModels =
@@ -23,11 +24,13 @@ public partial class SettingsWindow : Window
     ];
 
     public bool SettingsChanged { get; private set; }
+    public bool HistoryCleared { get; private set; }
 
-    public SettingsWindow(AppSettings settings)
+    public SettingsWindow(AppSettings settings, CorrectionHistory? history = null)
     {
         InitializeComponent();
         _settings = settings;
+        _history = history;
 
         ApiKeyBox.Password = settings.GetApiKey();
         HotkeyBox.Text = settings.Hotkey;
@@ -47,7 +50,38 @@ public partial class SettingsWindow : Window
         ManualOnlyBox.IsChecked = settings.ManualApplyOnly;
         UpdateAutoApplyEnabled();
 
+        HistoryMaxBox.Text = settings.HistoryMaxItems.ToString();
+        // When opened standalone (no live history), clearing makes no sense — disable.
+        ClearHistoryButton.IsEnabled = _history is not null;
+
         PopulateCustomModesList();
+    }
+
+    private async void OnClearHistoryClick(object sender, RoutedEventArgs e)
+    {
+        if (_history is null) return;
+
+        var confirm = WpfMessageBox.Show(
+            "Erase all stored correction history? This also resets the today/total counters and session cost.",
+            "TextFix — Clear history",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning,
+            MessageBoxResult.Cancel);
+        if (confirm != MessageBoxResult.OK) return;
+
+        _history.Clear();
+        try
+        {
+            await _history.SaveAsync();
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show($"History cleared in memory but could not write to disk: {ex.Message}",
+                "TextFix", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+        HistoryCleared = true;
+        HistoryStatusText.Text = "History cleared.";
+        HistoryStatusText.Visibility = Visibility.Visible;
     }
 
     private void OnDigitsOnly(object sender, System.Windows.Input.TextCompositionEventArgs e)
@@ -254,6 +288,15 @@ public partial class SettingsWindow : Window
         _settings.OverlayAutoApplySeconds = Math.Min(seconds, 300);
 
         _settings.ManualApplyOnly = ManualOnlyBox.IsChecked == true;
+
+        var historyText = HistoryMaxBox.Text.Trim();
+        if (!int.TryParse(historyText, out var historyMax) || historyMax < 1)
+        {
+            WpfMessageBox.Show($"History limit must be between 1 and {CorrectionHistory.MaxItemsCap}.", "TextFix",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+        _settings.HistoryMaxItems = Math.Min(historyMax, CorrectionHistory.MaxItemsCap);
 
         try
         {

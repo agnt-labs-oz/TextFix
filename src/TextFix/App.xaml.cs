@@ -180,6 +180,7 @@ public partial class App : Application
         _trayIcon.ContextMenuStrip.Items.Add(_historyMenu);
 
         _trayIcon.ContextMenuStrip.Items.Add("Copy Last Correction", null, (_, _) => CopyLastCorrection());
+        _trayIcon.ContextMenuStrip.Items.Add("Clear history…", null, (_, _) => ClearHistoryWithConfirm());
         _trayIcon.ContextMenuStrip.Items.Add("Settings", null, (_, _) => OpenSettings());
         _trayIcon.ContextMenuStrip.Items.Add("Check for updates…", null, OnCheckForUpdatesClicked);
         _trayIcon.ContextMenuStrip.Items.Add("-");
@@ -193,7 +194,8 @@ public partial class App : Application
         if (modeName is null) return;
 
         _settings.ActiveModeName = modeName;
-        await _settings.SaveAsync();
+        try { await _settings.SaveAsync(); }
+        catch (Exception ex) { LogError(ex); }
 
         // Update checkmarks
         if (_trayIcon?.ContextMenuStrip?.Items[0] is ToolStripMenuItem modeMenu)
@@ -310,7 +312,8 @@ public partial class App : Application
     private async void OnOverlayModeChanged(string modeName)
     {
         _settings.ActiveModeName = modeName;
-        await _settings.SaveAsync();
+        try { await _settings.SaveAsync(); }
+        catch (Exception ex) { LogError(ex); }
         SyncTrayState();
     }
 
@@ -376,7 +379,7 @@ public partial class App : Application
         if (!string.IsNullOrWhiteSpace(_settings.GetApiKey()))
             _aiClient = new AiClient(_settings);
 
-        var history = await CorrectionHistory.LoadAsync();
+        var history = await CorrectionHistory.LoadAsync(maxItems: _settings.HistoryMaxItems);
         _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!, _settings, history);
 
         _correctionService.ProcessingStarted += () =>
@@ -472,29 +475,36 @@ public partial class App : Application
         LogDebug($"UserResponded: apply={apply}");
         if (_correctionService is null) return;
 
-        if (apply && _correctionService.LastResult is not null)
+        // Wrap the whole body — async void + unhandled exception = silent process termination.
+        try
         {
-            // If user edited the text in manual mode, apply their edit rather than the original AI output.
-            // TrimEnd comparison so a stray trailing newline from AcceptsReturn doesn't count as an edit.
-            var edited = _overlay?.GetEditedText();
-            var original = _correctionService.LastResult.CorrectedText;
-            var resultToApply = edited is not null && edited.TrimEnd() != original.TrimEnd()
-                ? _correctionService.LastResult with { CorrectedText = edited }
-                : _correctionService.LastResult;
+            if (apply && _correctionService.LastResult is not null)
+            {
+                // If user edited the text in manual mode, apply their edit rather than the original AI output.
+                // TrimEnd comparison so a stray trailing newline from AcceptsReturn doesn't count as an edit.
+                var edited = _overlay?.GetEditedText();
+                var original = _correctionService.LastResult.CorrectedText;
+                var resultToApply = edited is not null && edited.TrimEnd() != original.TrimEnd()
+                    ? _correctionService.LastResult with { CorrectedText = edited }
+                    : _correctionService.LastResult;
 
-            LogDebug("Applying correction");
-            await _correctionService.ApplyCorrectionAsync(resultToApply);
-            LogDebug("ApplyCorrectionAsync done");
+                LogDebug("Applying correction");
+                await _correctionService.ApplyCorrectionAsync(resultToApply);
+                LogDebug("ApplyCorrectionAsync done");
 
-            // Always show applied state — unified dialog with diff, mode selector, redo
-            if (_correctionService is not null)
+                // Always show applied state — unified dialog with diff, mode selector, redo
                 _overlay?.SetHistory(_correctionService.History);
-            _overlay?.ShowApplied();
+                _overlay?.ShowApplied();
+            }
+            else
+            {
+                LogDebug("Cancelling correction");
+                await _correctionService.CancelAndRestoreAsync();
+            }
         }
-        else
+        catch (Exception ex)
         {
-            LogDebug("Cancelling correction");
-            await _correctionService.CancelAndRestoreAsync();
+            LogError(ex);
         }
     }
 
@@ -512,9 +522,26 @@ public partial class App : Application
         }
     }
 
-    private void OpenSettings()
+    private async void ClearHistoryWithConfirm()
     {
-        var window = new SettingsWindow(_settings);
+        if (_correctionService is null) return;
+
+        var result = System.Windows.MessageBox.Show(
+            "Erase all stored correction history? This also resets the today/total counters and session cost.",
+            "TextFix — Clear history",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning,
+            MessageBoxResult.Cancel);
+        if (result != MessageBoxResult.OK) return;
+
+        _correctionService.History.Clear();
+        await _correctionService.History.SaveAsync();
+        RefreshHistoryMenu();
+    }
+
+    private async void OpenSettings()
+    {
+        var window = new SettingsWindow(_settings, _correctionService?.History);
         window.ShowDialog();
         if (window.SettingsChanged)
         {
@@ -522,7 +549,17 @@ public partial class App : Application
             RegisterHotkey();
             RebuildModeMenus();
             SyncTrayState();
+
+            // Apply the new history cap to the running service and persist a trimmed file
+            // so the limit takes effect immediately rather than on next launch.
+            if (_correctionService is not null)
+            {
+                _correctionService.History.SetMaxItems(_settings.HistoryMaxItems);
+                await _correctionService.History.SaveAsync();
+            }
         }
+        if (window.HistoryCleared)
+            RefreshHistoryMenu();
     }
 
     private void RebuildModeMenus()
@@ -581,9 +618,31 @@ public partial class App : Application
                 "TextFix");
             Directory.CreateDirectory(dir);
             var logPath = Path.Combine(dir, "error.log");
-            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] {ex}\n\n");
+            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] {FormatException(ex)}\n\n");
         }
         catch { /* best effort */ }
+    }
+
+    /// <summary>
+    /// Avoids <c>Exception.ToString()</c> because some SDK exceptions (notably
+    /// HTTP-backed ones) round-trip request metadata — including authorization
+    /// headers — into their full string form. We log only the type, message,
+    /// inner-exception chain, and stack trace.
+    /// </summary>
+    private static string FormatException(Exception ex)
+    {
+        var sb = new System.Text.StringBuilder();
+        var current = ex;
+        var depth = 0;
+        while (current is not null && depth < 5)
+        {
+            if (depth > 0) sb.Append(" --> ");
+            sb.Append(current.GetType().FullName).Append(": ").AppendLine(current.Message);
+            current = current.InnerException;
+            depth++;
+        }
+        if (ex.StackTrace is not null) sb.AppendLine(ex.StackTrace);
+        return sb.ToString().TrimEnd();
     }
 
     [System.Diagnostics.Conditional("DEBUG")]

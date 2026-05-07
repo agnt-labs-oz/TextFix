@@ -125,6 +125,9 @@ public class CorrectionService
     public async Task CancelAndRestoreAsync()
     {
         Cancel();
+        // Apply path restores focus before pasting; cancel must do the same so the user
+        // doesn't have to click back into the source app after dismissing the overlay.
+        _focusTracker.RestoreFocus();
         await _clipboard.RestoreClipboardAsync();
     }
 

@@ -31,6 +31,13 @@ public class AppSettings
     public bool ManualApplyOnly { get; set; }
     public bool StartWithWindows { get; set; }
 
+    /// <summary>
+    /// Maximum number of recent corrections to keep in history.
+    /// Default 10 — small for privacy and to stop the panel growing unbounded.
+    /// CorrectionHistory enforces a hard ceiling (<see cref="CorrectionHistory.MaxItemsCap"/>).
+    /// </summary>
+    public int HistoryMaxItems { get; set; } = 10;
+
     public string ActiveModeName { get; set; } = "Fix errors";
 
     public List<CorrectionMode> CustomModes { get; set; } = [];
@@ -128,10 +135,20 @@ public class AppSettings
             var json = await File.ReadAllTextAsync(path);
             var settings = JsonSerializer.Deserialize<AppSettings>(json, JsonOptions) ?? new AppSettings();
 
+            // Settings files written by builds before HistoryMaxItems existed deserialise
+            // the missing key as 0, which would clamp the in-memory history to a single
+            // entry on next load. Restore the documented default for any non-positive value.
+            if (settings.HistoryMaxItems < 1)
+                settings.HistoryMaxItems = 10;
+
             // Migrate plaintext key to encrypted
             if (!string.IsNullOrEmpty(settings.ApiKey) && string.IsNullOrEmpty(settings.EncryptedApiKey))
             {
-                settings.SetApiKey(settings.ApiKey);
+                // Zero the in-memory plaintext copy before SetApiKey re-stores the encrypted form,
+                // so even an unexpected mid-migration save can't re-persist the legacy field.
+                var legacy = settings.ApiKey;
+                settings.ApiKey = "";
+                settings.SetApiKey(legacy);
                 await settings.SaveAsync(path);
             }
 

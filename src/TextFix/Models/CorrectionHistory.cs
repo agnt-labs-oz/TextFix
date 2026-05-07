@@ -6,11 +6,22 @@ namespace TextFix.Models;
 public class CorrectionHistory
 {
     private readonly List<CorrectionResult> _items = [];
-    private const int MaxItems = 50;
+    private int _maxItems;
+
+    // Hard ceiling — the settings UI clamps to this so a user can't accidentally
+    // ask us to keep an unbounded number of entries on disk.
+    public const int MaxItemsCap = 100;
 
     // Haiku pricing: $0.80/M input, $4.00/M output
     private const decimal InputCostPerToken = 0.80m / 1_000_000m;
     private const decimal OutputCostPerToken = 4.00m / 1_000_000m;
+
+    public CorrectionHistory(int maxItems = 50)
+    {
+        _maxItems = ClampMax(maxItems);
+    }
+
+    private static int ClampMax(int requested) => Math.Clamp(requested, 1, MaxItemsCap);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -57,7 +68,30 @@ public class CorrectionHistory
 
         _items.Insert(0, result);
 
-        if (_items.Count > MaxItems)
+        TrimToLimit();
+    }
+
+    public void SetMaxItems(int maxItems)
+    {
+        _maxItems = ClampMax(maxItems);
+        TrimToLimit();
+    }
+
+    /// <summary>
+    /// Wipes all history entries plus the lifetime counter and the rolling session cost.
+    /// Caller is expected to follow up with <see cref="SaveAsync"/> so the on-disk copy
+    /// matches — wiping in memory only would resurrect old entries on next launch.
+    /// </summary>
+    public void Clear()
+    {
+        _items.Clear();
+        TotalCount = 0;
+        SessionCost = 0m;
+    }
+
+    private void TrimToLimit()
+    {
+        while (_items.Count > _maxItems)
             _items.RemoveAt(_items.Count - 1);
     }
 
@@ -73,28 +107,29 @@ public class CorrectionHistory
         await JsonSerializer.SerializeAsync(stream, data, JsonOptions);
     }
 
-    public static async Task<CorrectionHistory> LoadAsync(string? path = null)
+    public static async Task<CorrectionHistory> LoadAsync(string? path = null, int maxItems = 50)
     {
         path ??= DefaultPath;
         if (!File.Exists(path))
-            return new CorrectionHistory();
+            return new CorrectionHistory(maxItems);
 
         try
         {
             await using var stream = File.OpenRead(path);
             var data = await JsonSerializer.DeserializeAsync<HistoryData>(stream, JsonOptions);
             if (data is null)
-                return new CorrectionHistory();
+                return new CorrectionHistory(maxItems);
 
-            var history = new CorrectionHistory();
+            var history = new CorrectionHistory(maxItems);
             history.TotalCount = data.TotalCount;
             foreach (var item in data.Items)
                 history._items.Add(item);
+            history.TrimToLimit();
             return history;
         }
         catch
         {
-            return new CorrectionHistory();
+            return new CorrectionHistory(maxItems);
         }
     }
 

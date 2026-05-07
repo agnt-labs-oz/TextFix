@@ -55,6 +55,12 @@ dotnet run --project src/TextFix/TextFix.csproj
 
 All settings are stored at `%APPDATA%/TextFix/settings.json`. Your API key is encrypted with Windows DPAPI — it never leaves your machine in plaintext.
 
+### Privacy
+
+- **API key**: encrypted at rest with Windows DPAPI (per-user, decrypted only by your Windows account).
+- **Recent corrections**: the last N corrections (default 10, configurable) are stored as **plaintext JSON** at `%APPDATA%/TextFix/history.json` so you can copy a previous correction from the tray. This file is readable by any process running as your user. If you'd rather not keep them, lower the limit to 1 in Settings or use **Tray → Clear history…** to wipe in-memory + on-disk history immediately. The lifetime counter and session cost are reset by the same action.
+- **What's sent to Anthropic**: only the text you select when you press the hotkey. Nothing else is uploaded; no analytics or telemetry.
+
 | Setting | Default | Notes |
 |---------|---------|-------|
 | Hotkey | Ctrl+Shift+Z | Any modifier+key combo |
