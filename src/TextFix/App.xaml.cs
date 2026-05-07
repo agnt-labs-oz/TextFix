@@ -180,6 +180,7 @@ public partial class App : Application
         _trayIcon.ContextMenuStrip.Items.Add(_historyMenu);
 
         _trayIcon.ContextMenuStrip.Items.Add("Copy Last Correction", null, (_, _) => CopyLastCorrection());
+        _trayIcon.ContextMenuStrip.Items.Add("Clear history…", null, (_, _) => ClearHistoryWithConfirm());
         _trayIcon.ContextMenuStrip.Items.Add("Settings", null, (_, _) => OpenSettings());
         _trayIcon.ContextMenuStrip.Items.Add("Check for updates…", null, OnCheckForUpdatesClicked);
         _trayIcon.ContextMenuStrip.Items.Add("-");
@@ -376,7 +377,7 @@ public partial class App : Application
         if (!string.IsNullOrWhiteSpace(_settings.GetApiKey()))
             _aiClient = new AiClient(_settings);
 
-        var history = await CorrectionHistory.LoadAsync();
+        var history = await CorrectionHistory.LoadAsync(maxItems: _settings.HistoryMaxItems);
         _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!, _settings, history);
 
         _correctionService.ProcessingStarted += () =>
@@ -512,9 +513,26 @@ public partial class App : Application
         }
     }
 
-    private void OpenSettings()
+    private async void ClearHistoryWithConfirm()
     {
-        var window = new SettingsWindow(_settings);
+        if (_correctionService is null) return;
+
+        var result = System.Windows.MessageBox.Show(
+            "Erase all stored correction history? This also resets the today/total counters and session cost.",
+            "TextFix — Clear history",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning,
+            MessageBoxResult.Cancel);
+        if (result != MessageBoxResult.OK) return;
+
+        _correctionService.History.Clear();
+        await _correctionService.History.SaveAsync();
+        RefreshHistoryMenu();
+    }
+
+    private async void OpenSettings()
+    {
+        var window = new SettingsWindow(_settings, _correctionService?.History);
         window.ShowDialog();
         if (window.SettingsChanged)
         {
@@ -522,7 +540,17 @@ public partial class App : Application
             RegisterHotkey();
             RebuildModeMenus();
             SyncTrayState();
+
+            // Apply the new history cap to the running service and persist a trimmed file
+            // so the limit takes effect immediately rather than on next launch.
+            if (_correctionService is not null)
+            {
+                _correctionService.History.SetMaxItems(_settings.HistoryMaxItems);
+                await _correctionService.History.SaveAsync();
+            }
         }
+        if (window.HistoryCleared)
+            RefreshHistoryMenu();
     }
 
     private void RebuildModeMenus()

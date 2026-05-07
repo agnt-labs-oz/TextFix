@@ -31,6 +31,13 @@ public class AppSettings
     public bool ManualApplyOnly { get; set; }
     public bool StartWithWindows { get; set; }
 
+    /// <summary>
+    /// Maximum number of recent corrections to keep in history.
+    /// Default 10 — small for privacy and to stop the panel growing unbounded.
+    /// CorrectionHistory enforces a hard ceiling (<see cref="CorrectionHistory.MaxItemsCap"/>).
+    /// </summary>
+    public int HistoryMaxItems { get; set; } = 10;
+
     public string ActiveModeName { get; set; } = "Fix errors";
 
     public List<CorrectionMode> CustomModes { get; set; } = [];

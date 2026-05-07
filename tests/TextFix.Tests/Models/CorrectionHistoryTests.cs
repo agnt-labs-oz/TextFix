@@ -148,6 +148,93 @@ public class CorrectionHistoryTests
     }
 
     [Fact]
+    public void Constructor_RespectsMaxItems()
+    {
+        var history = new CorrectionHistory(maxItems: 5);
+        for (int i = 0; i < 10; i++)
+            history.Add(new CorrectionResult { OriginalText = $"a{i}", CorrectedText = $"b{i}" });
+
+        Assert.Equal(5, history.Items.Count);
+        Assert.Equal(10, history.TotalCount);
+        Assert.Equal("b9", history.Items[0].CorrectedText);
+        Assert.Equal("b5", history.Items[4].CorrectedText);
+    }
+
+    [Fact]
+    public void SetMaxItems_TrimsExisting()
+    {
+        var history = new CorrectionHistory(maxItems: 20);
+        for (int i = 0; i < 20; i++)
+            history.Add(new CorrectionResult { OriginalText = $"a{i}", CorrectedText = $"b{i}" });
+
+        history.SetMaxItems(5);
+
+        Assert.Equal(5, history.Items.Count);
+        Assert.Equal("b19", history.Items[0].CorrectedText);
+        Assert.Equal("b15", history.Items[4].CorrectedText);
+        // Lifetime counter is unaffected by trim — only the rolling window changed.
+        Assert.Equal(20, history.TotalCount);
+    }
+
+    [Fact]
+    public void Constructor_ClampsToMaxItemsCap()
+    {
+        var history = new CorrectionHistory(maxItems: 9999);
+        for (int i = 0; i < CorrectionHistory.MaxItemsCap + 10; i++)
+            history.Add(new CorrectionResult { OriginalText = $"a{i}", CorrectedText = $"b{i}" });
+
+        Assert.Equal(CorrectionHistory.MaxItemsCap, history.Items.Count);
+    }
+
+    [Fact]
+    public void Clear_EmptiesItemsAndResetsCounts()
+    {
+        var history = new CorrectionHistory();
+        history.Add(new CorrectionResult
+        {
+            OriginalText = "a",
+            CorrectedText = "b",
+            InputTokens = 100,
+            OutputTokens = 50,
+        });
+        Assert.NotEmpty(history.Items);
+        Assert.True(history.SessionCost > 0);
+
+        history.Clear();
+
+        Assert.Empty(history.Items);
+        Assert.Equal(0, history.TotalCount);
+        Assert.Equal(0m, history.SessionCost);
+    }
+
+    [Fact]
+    public async Task LoadAsync_AppliesMaxItemsToOverflowingFile()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"TextFixHistTest_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var path = Path.Combine(dir, "history.json");
+            // Write a file that has more entries than the new limit.
+            var seeded = new CorrectionHistory(maxItems: 50);
+            for (int i = 0; i < 30; i++)
+                seeded.Add(new CorrectionResult { OriginalText = $"a{i}", CorrectedText = $"b{i}" });
+            await seeded.SaveAsync(path);
+
+            var loaded = await CorrectionHistory.LoadAsync(path, maxItems: 10);
+
+            Assert.Equal(10, loaded.Items.Count);
+            Assert.Equal("b29", loaded.Items[0].CorrectedText);
+            // TotalCount preserved as-is — it's the lifetime counter, not the in-memory window.
+            Assert.Equal(30, loaded.TotalCount);
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    [Fact]
     public async Task SaveAndLoad_RoundTripsItems()
     {
         var dir = Path.Combine(Path.GetTempPath(), $"TextFixHistTest_{Guid.NewGuid():N}");

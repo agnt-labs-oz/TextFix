@@ -198,6 +198,29 @@
                        Foreground="#AAAAAA" FontSize="12" VerticalAlignment="Center"/>
         </StackPanel>
 
+        <!-- History controls: how many to keep, plus a one-click wipe for privacy. -->
+        <StackPanel Margin="0,0,0,12">
+            <Label Content="Recent corrections to keep (1–100)"/>
+            <Grid Margin="0,4,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBox x:Name="HistoryMaxBox" Grid.Column="0"
+                         Style="{StaticResource FieldBox}" Margin="0"
+                         PreviewTextInput="OnDigitsOnly" MaxLength="3"/>
+                <Button x:Name="ClearHistoryButton" Grid.Column="1"
+                        Content="Clear history now"
+                        AutomationProperties.Name="Clear all stored history"
+                        Background="#7F1D1D" Foreground="White" BorderBrush="Transparent"
+                        Height="28" Padding="10,0" FontSize="12" Cursor="Hand"
+                        Margin="8,0,0,0"
+                        Click="OnClearHistoryClick"/>
+            </Grid>
+            <TextBlock x:Name="HistoryStatusText" Foreground="#888"
+                       FontSize="11" Margin="0,4,0,0" Visibility="Collapsed"/>
+        </StackPanel>
+
         <!-- Custom Modes -->
         <StackPanel Margin="0,0,0,8">
             <Grid Margin="0,0,0,4">
