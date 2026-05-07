@@ -420,9 +420,11 @@
                 </ScrollViewer>
             </StackPanel>
 
-            <!-- Action row: redo original, redo refine, copy, history -->
-            <StackPanel x:Name="ActionRowPanel" Grid.Row="2" Orientation="Horizontal"
-                        Visibility="Collapsed" Margin="0,8,0,0">
+            <!-- Action row: redo original, redo refine, copy, history, collapse.
+                 WrapPanel so a tight window wraps the trailing buttons to a second line
+                 instead of clipping them off the right edge. -->
+            <WrapPanel x:Name="ActionRowPanel" Grid.Row="2" Orientation="Horizontal"
+                       Visibility="Collapsed" Margin="0,8,0,0">
                 <Button x:Name="RedoOrigButton" Content="&#x21BB; Original"
                         AutomationProperties.Name="Redo from original"
                         Background="#2A2A3E" Foreground="#AAAAAA"
@@ -439,7 +441,12 @@
                         AutomationProperties.Name="Toggle history panel"
                         Background="#2A2A3E" Foreground="#AAAAAA"
                         Style="{StaticResource SmallActionButton}" Click="OnActionHistoryToggle"/>
-            </StackPanel>
+                <Button x:Name="CollapseToggleButton" Content="&#x25BE; Collapse"
+                        AutomationProperties.Name="Collapse or expand result panel"
+                        ToolTip="Shrink the window to a peek view"
+                        Background="#2A2A3E" Foreground="#AAAAAA"
+                        Style="{StaticResource SmallActionButton}" Click="OnActionCollapseToggle"/>
+            </WrapPanel>
 
             <!-- Visible resize grip — purely decorative; the WindowChrome ResizeBorderThickness handles the actual resize hit-test. -->
             <Path x:Name="ResizeGrip" Grid.Row="2"

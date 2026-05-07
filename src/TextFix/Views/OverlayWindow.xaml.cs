@@ -34,6 +34,12 @@ public partial class OverlayWindow : Window
     // suppresses OnWindowSizeChanged captures of the intermediate transition sizes.
     private bool _suppressSizeCapture;
 
+    // Cap result window at this fraction of the current monitor's working area.
+    private const double MaxScreenFraction = 0.85;
+    private const double CollapsedHeight = 200;
+    private bool _collapsed;
+    private double _uncollapsedHeight;
+
     public event Action<bool>? UserResponded;
     public event Action? RetryRequested;
     public event Action? CopyRequested;
@@ -307,6 +313,12 @@ public partial class OverlayWindow : Window
         ResultPanel.Visibility = Visibility.Visible;
         ErrorPanel.Visibility = Visibility.Collapsed;
         InfoPanel.Visibility = Visibility.Collapsed;
+        // Action row visible in result state too so Copy/History/Collapse are reachable
+        // before the user applies. Redo buttons are disabled until there's a result to redo from.
+        ActionRowPanel.Visibility = Visibility.Visible;
+        RedoOrigButton.IsEnabled = true;
+        RedoRefineButton.IsEnabled = true;
+        CopyButton.IsEnabled = true;
         // Always land on the editable Corrected tab. Without this the user can land on
         // whichever tab was selected on the prior result.
         DiffTabs.SelectedIndex = 0;
@@ -364,10 +376,14 @@ public partial class OverlayWindow : Window
         StatusText.Text = "Applied!";
         StatusText.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xE0, 0xE0, 0xE0));
 
-        // Hide Apply/Cancel since already applied, keep mode selector and action row
+        // Hide Apply/Cancel since already applied, keep mode selector and action row.
+        // Repurpose the countdown row as an Esc hint so the user can see how to dismiss
+        // (the Cancel button that normally carries "(Esc)" is now hidden).
         ApplyButton.Visibility = Visibility.Collapsed;
         CancelButton.Visibility = Visibility.Collapsed;
-        CountdownText.Visibility = Visibility.Collapsed;
+        CountdownText.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x88, 0x88, 0x88));
+        CountdownText.Text = "Press Esc or Enter to dismiss";
+        CountdownText.Visibility = Visibility.Visible;
 
         RedoOrigButton.IsEnabled = true;
         RedoRefineButton.IsEnabled = true;
@@ -417,13 +433,26 @@ public partial class OverlayWindow : Window
     {
         // Floor on restore — saved values from earlier buggy capture (intermediate transition sizes)
         // could land below a usable height, so always come up tall enough to be useful.
-        if (width is > 0) _resultPrefWidth = Math.Max(480, width.Value);
-        if (height is > 0) _resultPrefHeight = Math.Max(480, height.Value);
+        var (maxW, maxH) = GetMaxResultDimensions();
+        if (width is > 0) _resultPrefWidth = Math.Clamp(width.Value, 480, maxW);
+        if (height is > 0) _resultPrefHeight = Math.Clamp(height.Value, 480, maxH);
         if (left.HasValue && top.HasValue && !double.IsNaN(left.Value) && !double.IsNaN(top.Value))
         {
             _savedLeft = left;
             _savedTop = top;
         }
+    }
+
+    // Working area of the monitor the window is currently on, scaled to the cap percentage.
+    // Falls back to the primary screen when the window has no HWND yet.
+    private (double maxW, double maxH) GetMaxResultDimensions()
+    {
+        var helper = new System.Windows.Interop.WindowInteropHelper(this);
+        var area = helper.Handle != IntPtr.Zero
+            ? System.Windows.Forms.Screen.FromHandle(helper.Handle).WorkingArea
+            : System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea
+              ?? new System.Drawing.Rectangle(0, 0, 1920, 1080);
+        return (area.Width * MaxScreenFraction, area.Height * MaxScreenFraction);
     }
 
     // --- Clickable button handlers ---
@@ -547,9 +576,14 @@ public partial class OverlayWindow : Window
         _suppressSizeCapture = true;
         if (SizeToContent != SizeToContent.Manual)
             SizeToContent = SizeToContent.Manual;
-        Width = _resultPrefWidth;
-        Height = _resultPrefHeight;
+        var (maxW, maxH) = GetMaxResultDimensions();
+        Width = Math.Min(_resultPrefWidth, maxW);
+        Height = Math.Min(_resultPrefHeight, maxH);
         ResizeGrip.Visibility = Visibility.Visible;
+        // Coming back into the result view always lands expanded — the user
+        // shouldn't be staring at a peek pane after triggering a fresh correction.
+        _collapsed = false;
+        UpdateCollapseButtonLabel();
         Dispatcher.InvokeAsync(() =>
         {
             if (_savedLeft.HasValue && _savedTop.HasValue)
@@ -584,13 +618,16 @@ public partial class OverlayWindow : Window
         // Skip programmatic resizes — those carry transition sizes from the pill→result switch.
         if (_suppressSizeCapture) return;
 
-        // Persist user-driven resizes only while the result panel is the active manual-sized view.
+        // Persist user-driven resizes only while the result panel is the active manual-sized view,
+        // and only when expanded — collapsed-height shouldn't overwrite the user's preferred size.
         if (SizeToContent == SizeToContent.Manual
-            && ResultPanel.Visibility == Visibility.Visible)
+            && ResultPanel.Visibility == Visibility.Visible
+            && !_collapsed)
         {
-            _resultPrefWidth = e.NewSize.Width;
-            _resultPrefHeight = e.NewSize.Height;
-            BoundsChanged?.Invoke(e.NewSize.Width, e.NewSize.Height,
+            var (maxW, maxH) = GetMaxResultDimensions();
+            _resultPrefWidth = Math.Min(e.NewSize.Width, maxW);
+            _resultPrefHeight = Math.Min(e.NewSize.Height, maxH);
+            BoundsChanged?.Invoke(_resultPrefWidth, _resultPrefHeight,
                 _savedLeft ?? Left, _savedTop ?? Top);
         }
     }
@@ -637,6 +674,7 @@ public partial class OverlayWindow : Window
     private void StartAutoApplyCountdown(int seconds)
     {
         _countdownSeconds = seconds;
+        CountdownText.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0x66, 0x66, 0x66));
         CountdownText.Text = $"Auto-applying in {_countdownSeconds}s...";
         CountdownText.Visibility = Visibility.Visible;
 
@@ -912,5 +950,43 @@ public partial class OverlayWindow : Window
             CopyButton.Content = original;
         };
         timer.Start();
+    }
+
+    private void OnActionCollapseToggle(object sender, RoutedEventArgs e)
+    {
+        // Only meaningful in the manually-sized result view; idle/error/info are pill-sized.
+        if (SizeToContent != SizeToContent.Manual) return;
+
+        // Anchor the bottom edge — the action row should stay where it is while the
+        // diff/text portion above it "rolls" up out of view.
+        _suppressSizeCapture = true;
+        var oldHeight = ActualHeight > 0 ? ActualHeight : Height;
+        double newHeight;
+        if (!_collapsed)
+        {
+            _uncollapsedHeight = oldHeight;
+            _collapsed = true;
+            newHeight = CollapsedHeight;
+        }
+        else
+        {
+            _collapsed = false;
+            var (_, maxH) = GetMaxResultDimensions();
+            var target = _uncollapsedHeight > 0 ? _uncollapsedHeight : _resultPrefHeight;
+            newHeight = Math.Min(target, maxH);
+        }
+        Height = newHeight;
+        Top += (oldHeight - newHeight);
+        UpdateCollapseButtonLabel();
+        Dispatcher.InvokeAsync(() =>
+        {
+            ClampToScreen();
+            _suppressSizeCapture = false;
+        }, System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void UpdateCollapseButtonLabel()
+    {
+        CollapseToggleButton.Content = _collapsed ? "\u25b4 Expand" : "\u25be Collapse";
     }
 }
