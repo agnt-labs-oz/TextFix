@@ -217,6 +217,9 @@
                         Margin="8,0,0,0"
                         Click="OnClearHistoryClick"/>
             </Grid>
+            <TextBlock Foreground="#666" FontSize="10" Margin="0,4,0,0"
+                       TextWrapping="Wrap"
+                       Text="Stored as plaintext at %APPDATA%/TextFix/history.json"/>
             <TextBlock x:Name="HistoryStatusText" Foreground="#888"
                        FontSize="11" Margin="0,4,0,0" Visibility="Collapsed"/>
         </StackPanel>

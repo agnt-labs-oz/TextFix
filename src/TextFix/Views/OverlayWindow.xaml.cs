@@ -455,7 +455,21 @@ public partial class OverlayWindow : Window
             ? System.Windows.Forms.Screen.FromHandle(helper.Handle).WorkingArea
             : System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea
               ?? new System.Drawing.Rectangle(0, 0, 1920, 1080);
-        return (area.Width * MaxScreenFraction, area.Height * MaxScreenFraction);
+        var scale = GetDpiScale();
+        return (area.Width / scale * MaxScreenFraction, area.Height / scale * MaxScreenFraction);
+    }
+
+    /// <summary>
+    /// WPF window dimensions are in DIPs but <see cref="System.Windows.Forms.Screen.WorkingArea"/>
+    /// returns physical pixels. On a 150% display they differ by 1.5x; using the raw
+    /// pixel values as DIPs makes the window size or clamp itself outside the monitor.
+    /// Returns the device-to-DIP factor for the current visual, defaulting to 1.0
+    /// before the window has rendered.
+    /// </summary>
+    private double GetDpiScale()
+    {
+        var source = System.Windows.PresentationSource.FromVisual(this);
+        return source?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
     }
 
     // --- Clickable button handlers ---
@@ -549,15 +563,21 @@ public partial class OverlayWindow : Window
 
         if (NativeMethods.GetCursorPos(out var point))
         {
-            Left = point.X + 10;
-            Top = point.Y + 20;
+            // GetCursorPos and Screen.FromPoint return physical pixels; WPF Left/Top are DIPs.
+            var scale = GetDpiScale();
+            var cursorXDip = point.X / scale;
+            var cursorYDip = point.Y / scale;
+            Left = cursorXDip + 10;
+            Top = cursorYDip + 20;
 
             var cursorPoint = new System.Drawing.Point(point.X, point.Y);
             var screen = System.Windows.Forms.Screen.FromPoint(cursorPoint).WorkingArea;
-            if (Left + ActualWidth > screen.Right)
-                Left = screen.Right - ActualWidth - 10;
-            if (Top + ActualHeight > screen.Bottom)
-                Top = point.Y - ActualHeight - 10;
+            var rightDip = screen.Right / scale;
+            var bottomDip = screen.Bottom / scale;
+            if (Left + ActualWidth > rightDip)
+                Left = rightDip - ActualWidth - 10;
+            if (Top + ActualHeight > bottomDip)
+                Top = cursorYDip - ActualHeight - 10;
         }
     }
 
@@ -608,12 +628,19 @@ public partial class OverlayWindow : Window
             : System.Windows.Forms.Screen.PrimaryScreen?.WorkingArea
               ?? new System.Drawing.Rectangle(0, 0, 1920, 1080);
 
-        if (Left + ActualWidth > screen.Right)
-            Left = Math.Max(screen.Left, screen.Right - ActualWidth - 10);
-        if (Top + ActualHeight > screen.Bottom)
-            Top = Math.Max(screen.Top, screen.Bottom - ActualHeight - 10);
-        if (Left < screen.Left) Left = screen.Left;
-        if (Top < screen.Top) Top = screen.Top;
+        // Convert physical-pixel screen bounds to DIPs so they line up with Left/Top/ActualWidth.
+        var scale = GetDpiScale();
+        var leftDip = screen.Left / scale;
+        var topDip = screen.Top / scale;
+        var rightDip = screen.Right / scale;
+        var bottomDip = screen.Bottom / scale;
+
+        if (Left + ActualWidth > rightDip)
+            Left = Math.Max(leftDip, rightDip - ActualWidth - 10);
+        if (Top + ActualHeight > bottomDip)
+            Top = Math.Max(topDip, bottomDip - ActualHeight - 10);
+        if (Left < leftDip) Left = leftDip;
+        if (Top < topDip) Top = topDip;
     }
 
     private void OnWindowSizeChanged(object sender, SizeChangedEventArgs e)

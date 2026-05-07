@@ -618,9 +618,31 @@ public partial class App : Application
                 "TextFix");
             Directory.CreateDirectory(dir);
             var logPath = Path.Combine(dir, "error.log");
-            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] {ex}\n\n");
+            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] {FormatException(ex)}\n\n");
         }
         catch { /* best effort */ }
+    }
+
+    /// <summary>
+    /// Avoids <c>Exception.ToString()</c> because some SDK exceptions (notably
+    /// HTTP-backed ones) round-trip request metadata — including authorization
+    /// headers — into their full string form. We log only the type, message,
+    /// inner-exception chain, and stack trace.
+    /// </summary>
+    private static string FormatException(Exception ex)
+    {
+        var sb = new System.Text.StringBuilder();
+        var current = ex;
+        var depth = 0;
+        while (current is not null && depth < 5)
+        {
+            if (depth > 0) sb.Append(" --> ");
+            sb.Append(current.GetType().FullName).Append(": ").AppendLine(current.Message);
+            current = current.InnerException;
+            depth++;
+        }
+        if (ex.StackTrace is not null) sb.AppendLine(ex.StackTrace);
+        return sb.ToString().TrimEnd();
     }
 
     [System.Diagnostics.Conditional("DEBUG")]
