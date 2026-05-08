@@ -243,4 +243,11 @@ public class AppSettingsTests : IDisposable
         Assert.Equal(CorrectionMode.Defaults.Count + 1, all.Count);
         Assert.Equal("Custom1", all[^1].Name);
     }
+
+    [Fact]
+    public void LogLevel_DefaultsToWarn()
+    {
+        var settings = new AppSettings();
+        Assert.Equal("Warn", settings.LogLevel);
+    }
 }

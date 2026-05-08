@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.worktrees/**)",
+      "Glob(./.worktrees/**)",
+      "Grep(./.worktrees/**)"
+    ]
+  },
+  "respectGitignore": true
+}

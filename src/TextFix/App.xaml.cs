@@ -27,7 +27,15 @@ public partial class App : Application
         app.Run();
     }
 
+    private const string KofiUrl = "https://ko-fi.com/3smallwins";
+    private const string GitHubRepoUrl = "https://github.com/agnt-labs-oz/TextFix";
+    private const string GitHubNewIssueUrl =
+        "https://github.com/agnt-labs-oz/TextFix/issues/new?template=bug_report.yml";
+    private const string GitHubNewIdeaUrl =
+        "https://github.com/agnt-labs-oz/TextFix/discussions/new?category=ideas";
+
     private static Mutex? _mutex;
+    private static AppLog? _log;
     private NotifyIcon? _trayIcon;
     private ToolStripMenuItem? _historyMenu;
     private HotkeyListener? _hotkeyListener;
@@ -37,6 +45,7 @@ public partial class App : Application
     private FocusTracker? _focusTracker;
     private OverlayWindow? _overlay;
     private UpdateService? _updateService;
+    private StatsTracker? _statsTracker;
     private AppSettings _settings = new();
     private int _isBusy;
     private System.Windows.Threading.DispatcherTimer? _keepAliveTimer;
@@ -67,6 +76,14 @@ public partial class App : Application
         };
 
         _settings = await AppSettings.LoadAsync();
+
+        var logDir = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "TextFix", "logs");
+        var level = Enum.TryParse<AppLog.Level>(_settings.LogLevel, ignoreCase: true, out var lvl)
+            ? lvl : AppLog.Level.Warn;
+        _log = new AppLog(logDir, level);
+        _log.Info($"TextFix starting (version {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version})");
 
         CreateHiddenWindow();
         SetupTrayIcon();
@@ -195,6 +212,13 @@ public partial class App : Application
         _trayIcon.ContextMenuStrip.Items.Add("Clear history…", null, (_, _) => ClearHistoryWithConfirm());
         _trayIcon.ContextMenuStrip.Items.Add("Settings", null, (_, _) => OpenSettings());
         _trayIcon.ContextMenuStrip.Items.Add("Check for updates…", null, OnCheckForUpdatesClicked);
+        _trayIcon.ContextMenuStrip.Items.Add("-");
+        _trayIcon.ContextMenuStrip.Items.Add("Suggest a feature…", null, (_, _) => OpenUrl(GitHubNewIdeaUrl));
+        _trayIcon.ContextMenuStrip.Items.Add("Report an issue…", null, (_, _) => OpenUrl(GitHubNewIssueUrl));
+        _trayIcon.ContextMenuStrip.Items.Add("Open log folder", null, (_, _) => OpenLogFolder());
+        _trayIcon.ContextMenuStrip.Items.Add("-");
+        _trayIcon.ContextMenuStrip.Items.Add("About TextFix…", null, (_, _) => OpenAbout());
+        _trayIcon.ContextMenuStrip.Items.Add("Support TextFix ☕", null, (_, _) => OpenUrl(KofiUrl));
         _trayIcon.ContextMenuStrip.Items.Add("-");
         _trayIcon.ContextMenuStrip.Items.Add("Exit", null, (_, _) => Shutdown());
     }
@@ -392,6 +416,7 @@ public partial class App : Application
             _aiClient = new AiClient(_settings);
 
         var history = await CorrectionHistory.LoadAsync(maxItems: _settings.HistoryMaxItems);
+        _statsTracker = new StatsTracker(StatsTracker.DefaultPath);
         _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!, _settings, history);
 
         _correctionService.ProcessingStarted += () =>
@@ -404,6 +429,8 @@ public partial class App : Application
                 _overlay?.ShowResult(result, autoApply, _settings.ManualApplyOnly);
                 RefreshHistoryMenu();
                 await _correctionService.History.SaveAsync();
+                if (_statsTracker is not null)
+                    await _statsTracker.RecordAsync(result);
             });
 
         _correctionService.ErrorOccurred += msg =>
@@ -613,6 +640,7 @@ public partial class App : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        _log?.Info("TextFix exiting");
         _keepAliveTimer?.Stop();
         _hotkeyListener?.Dispose();
         _trayIcon?.Dispose();
@@ -621,54 +649,34 @@ public partial class App : Application
         base.OnExit(e);
     }
 
-    private static void LogError(Exception ex)
+    private static void OpenUrl(string url)
+    {
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception ex) { _log?.Warn($"OpenUrl failed: {ex.Message}"); }
+    }
+
+    private void OpenLogFolder()
     {
         try
         {
-            var dir = Path.Combine(
+            var logDir = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "TextFix");
-            Directory.CreateDirectory(dir);
-            var logPath = Path.Combine(dir, "error.log");
-            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] {FormatException(ex)}\n\n");
+                "TextFix", "logs");
+            Directory.CreateDirectory(logDir);
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", logDir) { UseShellExecute = true });
         }
-        catch { /* best effort */ }
+        catch (Exception ex) { _log?.Warn($"OpenLogFolder failed: {ex.Message}"); }
     }
 
-    /// <summary>
-    /// Avoids <c>Exception.ToString()</c> because some SDK exceptions (notably
-    /// HTTP-backed ones) round-trip request metadata — including authorization
-    /// headers — into their full string form. We log only the type, message,
-    /// inner-exception chain, and stack trace.
-    /// </summary>
-    private static string FormatException(Exception ex)
+    private void OpenAbout()
     {
-        var sb = new System.Text.StringBuilder();
-        var current = ex;
-        var depth = 0;
-        while (current is not null && depth < 5)
-        {
-            if (depth > 0) sb.Append(" --> ");
-            sb.Append(current.GetType().FullName).Append(": ").AppendLine(current.Message);
-            current = current.InnerException;
-            depth++;
-        }
-        if (ex.StackTrace is not null) sb.AppendLine(ex.StackTrace);
-        return sb.ToString().TrimEnd();
+        if (_statsTracker is null) return;
+        var window = new Views.AboutWindow(_statsTracker);
+        window.ShowDialog();
     }
+
+    private static void LogError(Exception ex) => _log?.Error("Unhandled", ex);
 
     [System.Diagnostics.Conditional("DEBUG")]
-    private static void LogDebug(string message)
-    {
-        try
-        {
-            var dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "TextFix");
-            Directory.CreateDirectory(dir);
-            var logPath = Path.Combine(dir, "debug.log");
-            File.AppendAllText(logPath, $"[{DateTime.UtcNow:o}] {message}\n");
-        }
-        catch { /* best effort */ }
-    }
+    private static void LogDebug(string message) => _log?.Info(message);
 }

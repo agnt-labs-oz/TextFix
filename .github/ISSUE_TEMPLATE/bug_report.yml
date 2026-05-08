@@ -1,0 +1,54 @@
+name: Bug report
+description: Something isn't working in TextFix
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: TextFix version
+      description: From "About TextFix…" in the tray menu, e.g. v0.6.0
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: AI provider
+      options:
+        - Anthropic (Claude)
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: e.g. claude-haiku-4-5
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Correction mode in use
+      options:
+        - Fix errors
+        - Professional
+        - Concise
+        - Friendly
+        - Expand
+        - Prompt enhancer
+        - Custom
+        - Don't know / multiple
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what did you see?
+      placeholder: "I selected text and pressed Ctrl+Shift+Z. I expected ... Instead, ..."
+    validations:
+      required: true
+  - type: textarea
+    id: log-excerpt
+    attributes:
+      label: Relevant log excerpt
+      description: From the "Open log folder" tray item — copy any [WARN] or [ERROR] lines from around the time of the bug.
+      render: text

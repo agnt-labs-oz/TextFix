@@ -132,8 +132,10 @@ public class CorrectionHistoryTests
             InputTokens = 1000,
             OutputTokens = 500,
             ModeName = "Fix errors",
+            Model = "claude-haiku-4-5-20251001",
         });
-        Assert.True(history.SessionCost > 0);
+        // Haiku: 1000 in × $1/M + 500 out × $5/M = $0.001 + $0.0025 = $0.0035
+        Assert.Equal(0.0035m, history.SessionCost);
     }
 
     [Fact]
@@ -302,5 +304,25 @@ public class CorrectionHistoryTests
         {
             Directory.Delete(dir, true);
         }
+    }
+
+    [Fact]
+    public void SessionCost_UsesPerModelRates()
+    {
+        var history = new CorrectionHistory();
+        history.Add(new CorrectionResult
+        {
+            OriginalText = "a", CorrectedText = "b",
+            InputTokens = 1_000_000, OutputTokens = 0,
+            Model = "claude-haiku-4-5-20251001",
+        });
+        history.Add(new CorrectionResult
+        {
+            OriginalText = "c", CorrectedText = "d",
+            InputTokens = 1_000_000, OutputTokens = 0,
+            Model = "claude-opus-4-6",
+        });
+        // Haiku $1 + Opus $15 = $16
+        Assert.Equal(16m, history.SessionCost);
     }
 }

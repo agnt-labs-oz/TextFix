@@ -12,10 +12,6 @@ public class CorrectionHistory
     // ask us to keep an unbounded number of entries on disk.
     public const int MaxItemsCap = 100;
 
-    // Haiku pricing: $0.80/M input, $4.00/M output
-    private const decimal InputCostPerToken = 0.80m / 1_000_000m;
-    private const decimal OutputCostPerToken = 4.00m / 1_000_000m;
-
     public CorrectionHistory(int maxItems = 50)
     {
         _maxItems = ClampMax(maxItems);
@@ -63,8 +59,8 @@ public class CorrectionHistory
             return;
 
         TotalCount++;
-        SessionCost += result.InputTokens * InputCostPerToken
-                     + result.OutputTokens * OutputCostPerToken;
+        SessionCost += TextFix.Services.CostEstimator.Estimate(
+            result.Model, result.InputTokens, result.OutputTokens);
 
         _items.Insert(0, result);
 

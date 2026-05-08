@@ -1,0 +1,29 @@
+title: "[Idea] "
+labels: []
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: What feature or change would you like to see in TextFix?
+    validations:
+      required: true
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Why does it matter?
+      description: When would you use it? What problem does it solve for you?
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Does this involve a specific AI provider?
+      options:
+        - Anthropic (Claude) — current
+        - OpenAI
+        - Google Gemini
+        - Local model (Ollama, llama.cpp, etc.)
+        - Provider-agnostic / N/A
+    validations:
+      required: false

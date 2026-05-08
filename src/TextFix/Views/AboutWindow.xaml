@@ -1,0 +1,95 @@
+<Window x:Class="TextFix.Views.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="About TextFix"
+        Width="420" Height="520"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="#1E1E2E"
+        Foreground="#E0E0E0"
+        FontFamily="Segoe UI" FontSize="13">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" HorizontalAlignment="Center">
+            <TextBlock Text="TextFix" FontSize="24" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+            <TextBlock x:Name="VersionText" FontSize="12" Foreground="#888" HorizontalAlignment="Center" Margin="0,4,0,0"/>
+            <TextBlock Text="Quick AI text correction for Windows." FontSize="12" Foreground="#888" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,16,0,16">
+            <TextBlock Margin="0,0,16,0">
+                <Hyperlink x:Name="GitHubLink" Foreground="#5AB0FF" Click="GitHubLink_Click">GitHub</Hyperlink>
+            </TextBlock>
+            <TextBlock>
+                <Hyperlink x:Name="LicenseLink" Foreground="#5AB0FF" Click="LicenseLink_Click">MIT License</Hyperlink>
+            </TextBlock>
+        </StackPanel>
+
+        <Border Grid.Row="2" Background="#2D2D3F" CornerRadius="6" Padding="16">
+            <StackPanel x:Name="StatsPanel">
+                <TextBlock Text="Your stats" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Lifetime corrections" Foreground="#BBB"/>
+                    <TextBlock x:Name="LifetimeText" Grid.Column="1" Text="–"/>
+                </Grid>
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Time saved (estimated)" Foreground="#BBB"/>
+                    <TextBlock x:Name="TimeSavedText" Grid.Column="1" Text="–"/>
+                </Grid>
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="Most-used mode" Foreground="#BBB"/>
+                    <TextBlock x:Name="MostUsedModeText" Grid.Column="1" Text="–"/>
+                </Grid>
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="This month spend (estimated)" Foreground="#BBB"/>
+                    <TextBlock x:Name="MonthCostText" Grid.Column="1" Text="–"/>
+                </Grid>
+                <TextBlock Text="By mode" FontWeight="SemiBold" Margin="0,8,0,4"/>
+                <ItemsControl x:Name="PerModeList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,2,0,2">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Key}" Foreground="#BBB"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Value}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <Button Grid.Row="3" x:Name="KofiButton"
+                Content="☕  Tip on Ko-fi"
+                Click="KofiButton_Click"
+                Background="#FF5E5B" Foreground="White"
+                FontWeight="SemiBold" FontSize="14"
+                Padding="0,10,0,10" BorderThickness="0"
+                Margin="0,16,0,0" Cursor="Hand"/>
+    </Grid>
+</Window>

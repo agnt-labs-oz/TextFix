@@ -9,6 +9,7 @@ public record CorrectionResult
     public bool IsError => ErrorMessage is not null;
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
     public string ModeName { get; init; } = "";
+    public string Model { get; init; } = "";
     public int InputTokens { get; init; }
     public int OutputTokens { get; init; }
 
