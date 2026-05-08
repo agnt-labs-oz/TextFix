@@ -37,7 +37,15 @@ TextFix uses the clipboard under the hood: it copies your selection, sends it to
 
 ### 1. Get an Anthropic API key
 
-Sign in at [console.anthropic.com](https://console.anthropic.com/settings/keys) and create a new key. Keep the page open — you'll paste the key into TextFix in step 3.
+TextFix uses Anthropic's Claude API and you bring your own key — nothing is sent to the developer.
+
+1. Go to [console.anthropic.com](https://console.anthropic.com) and create an account (or sign in if you have one). Free signup; you can use your existing Google/GitHub login.
+2. Add a payment method or buy credits at [console.anthropic.com/settings/billing](https://console.anthropic.com/settings/billing). Anthropic requires this before the API will accept requests; the default Haiku model in TextFix is cheap (a typical correction costs a fraction of a cent — see the *About TextFix* dialog for your running spend).
+3. Open [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) and click **Create Key**. Give it a name like "TextFix" so you can recognise it later.
+4. **Copy the key now** — Anthropic only shows the full key once. It starts with `sk-ant-…`.
+5. Keep the key on your clipboard; you'll paste it into TextFix in step 3.
+
+If you ever want to revoke or rotate the key (e.g. it leaked, or you want to track TextFix usage separately), come back to the same Keys page.
 
 ### 2. Install TextFix
 
