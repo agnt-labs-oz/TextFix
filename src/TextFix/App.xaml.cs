@@ -77,9 +77,21 @@ public partial class App : Application
         _updateService = new UpdateService();
         _ = CheckForUpdatesSilentAsync();
 
-        // Prompt for API key on first run
+        // Prompt for API key on first run; otherwise show a brief tray balloon so the user
+        // knows the app launched (without that, a normal start has zero visible feedback —
+        // just an icon appearing in the system tray that's easy to miss).
         if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+        {
             OpenSettings();
+        }
+        else
+        {
+            _trayIcon?.ShowBalloonTip(
+                2500,
+                "TextFix is running",
+                $"Select any text and press {_settings.Hotkey} to correct it.",
+                ToolTipIcon.Info);
+        }
     }
 
     private async Task CheckForUpdatesSilentAsync()
