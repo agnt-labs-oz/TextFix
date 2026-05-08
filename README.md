@@ -117,11 +117,13 @@ TextFix is free and MIT-licensed. If it saves you time, you can leave a tip:
 
 ### Planned
 
+- **Dictionary / thesaurus / inline lookup** — select a word, get a popover with definitions, synonyms, etymology, and pronunciation without leaving the app
 - **Multiple AI providers** — OpenAI, Google Gemini, local models via Ollama
 - **Real-time auto-correction** — monitor typing and correct as you go
+- **Per-mode hotkey shortcuts** — bind a hotkey directly to a mode (e.g. Ctrl+Shift+P → Professional) to skip the mode picker
+- **Streaming responses** — render the corrected text as it arrives, for faster perceived latency on long selections
+- **Translation / language-learning mode** — translate selection, explain grammar nuances
 - **Start with Windows** — launch on login (setting exists, wiring TBD)
-- **Translation / language-learning mode** — translate selection, explain grammar
-- **Selectable text in the Original tab** — currently a TextBlock, can't be selected
 - **Undo** — Ctrl+Z to revert the last applied correction
 
 ## Tech stack

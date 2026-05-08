@@ -328,9 +328,15 @@
                         <TabItem Header="Original" Style="{StaticResource OverlayTabItem}">
                             <ScrollViewer VerticalScrollBarVisibility="Auto"
                                           HorizontalScrollBarVisibility="Disabled">
-                                <TextBlock x:Name="OriginalText" Foreground="#AAAAAA"
-                                           FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
-                                           TextDecorations="Strikethrough"/>
+                                <!-- Read-only TextBox so users can select+copy from the Original
+                                     tab; TextBlock has no equivalent in WPF. Styled to look like
+                                     the prior TextBlock (transparent, no border, strikethrough). -->
+                                <TextBox x:Name="OriginalText" Foreground="#AAAAAA"
+                                         Background="Transparent" BorderBrush="Transparent"
+                                         CaretBrush="#6C63FF" IsReadOnly="True"
+                                         FontFamily="Segoe UI" FontSize="12" TextWrapping="Wrap"
+                                         TextDecorations="Strikethrough" Padding="0"
+                                         AcceptsReturn="True"/>
                             </ScrollViewer>
                         </TabItem>
                     </TabControl>
