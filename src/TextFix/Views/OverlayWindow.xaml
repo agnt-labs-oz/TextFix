@@ -249,6 +249,39 @@
                 <RowDefinition Height="Auto"/>  <!-- ActionRowPanel -->
             </Grid.RowDefinitions>
 
+            <!-- Close button (always visible) — mirrors the Esc key. -->
+            <Button x:Name="CloseButton" Grid.Row="0" Grid.RowSpan="3"
+                    Content="&#x2715;"
+                    AutomationProperties.Name="Close overlay"
+                    ToolTip="Close (Esc)"
+                    Width="20" Height="20"
+                    Padding="0" Margin="0,-6,-6,0"
+                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                    Background="Transparent" Foreground="#888"
+                    BorderBrush="Transparent"
+                    Cursor="Hand"
+                    FontFamily="Segoe UI" FontSize="11"
+                    Panel.ZIndex="10"
+                    Click="OnCloseClick">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="10">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3A3A4E"/>
+                                <Setter Property="Foreground" Value="#E0E0E0"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#555"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
+
             <!-- Main panel slot — only one panel visible at a time -->
             <Grid Grid.Row="0">
                 <!-- Processing state: spinner + "Correcting with {Mode}..." -->

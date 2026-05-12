@@ -688,18 +688,25 @@ public partial class OverlayWindow : Window
         }
         else if (e.Key == Key.Escape)
         {
-            StopAutoApply();
-            if (_showingError || _showingApplied || _showingIdle)
-            {
-                FadeOutAndHide();
-            }
-            else
-            {
-                UserResponded?.Invoke(false);
-                FadeOutAndHide();
-            }
+            DismissAsEscape();
         }
     }
+
+    private void DismissAsEscape()
+    {
+        StopAutoApply();
+        if (_showingError || _showingApplied || _showingIdle)
+        {
+            FadeOutAndHide();
+        }
+        else
+        {
+            UserResponded?.Invoke(false);
+            FadeOutAndHide();
+        }
+    }
+
+    private void OnCloseClick(object sender, RoutedEventArgs e) => DismissAsEscape();
 
     private void StartAutoApplyCountdown(int seconds)
     {

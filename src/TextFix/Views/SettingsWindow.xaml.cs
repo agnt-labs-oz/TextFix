@@ -50,6 +50,11 @@ public partial class SettingsWindow : Window
         ManualOnlyBox.IsChecked = settings.ManualApplyOnly;
         UpdateAutoApplyEnabled();
 
+        // Reflect the live registry state, not just the saved setting — these can diverge
+        // if a cleanup tool, group policy, or the user edited HKCU directly. The checkbox
+        // should match what Windows will actually do at next sign-in.
+        StartWithWindowsBox.IsChecked = StartupRegistration.IsEnabled();
+
         HistoryMaxBox.Text = settings.HistoryMaxItems.ToString();
         // When opened standalone (no live history), clearing makes no sense — disable.
         ClearHistoryButton.IsEnabled = _history is not null;
@@ -288,6 +293,19 @@ public partial class SettingsWindow : Window
         _settings.OverlayAutoApplySeconds = Math.Min(seconds, 300);
 
         _settings.ManualApplyOnly = ManualOnlyBox.IsChecked == true;
+
+        var startWithWindows = StartWithWindowsBox.IsChecked == true;
+        _settings.StartWithWindows = startWithWindows;
+        try
+        {
+            StartupRegistration.Apply(startWithWindows);
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show(
+                $"Could not update Windows startup setting: {ex.Message}\n\nOther settings will still be saved.",
+                "TextFix", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
 
         var historyText = HistoryMaxBox.Text.Trim();
         if (!int.TryParse(historyText, out var historyMax) || historyMax < 1)

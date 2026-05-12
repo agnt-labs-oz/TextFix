@@ -85,6 +85,12 @@ public partial class App : Application
         _log = new AppLog(logDir, level);
         _log.Info($"TextFix starting (version {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version})");
 
+        // Re-apply the autostart preference on every launch so the registry entry tracks the
+        // current exe path (matters after a Velopack update if Environment.ProcessPath shifts)
+        // and recovers if HKCU\...\Run\TextFix was removed externally.
+        try { StartupRegistration.Apply(_settings.StartWithWindows); }
+        catch (Exception ex) { _log.Warn($"Could not sync Windows startup entry: {ex.Message}"); }
+
         CreateHiddenWindow();
         SetupTrayIcon();
         SetupOverlay();

@@ -198,6 +198,13 @@
                        Foreground="#AAAAAA" FontSize="12" VerticalAlignment="Center"/>
         </StackPanel>
 
+        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+            <CheckBox x:Name="StartWithWindowsBox" VerticalAlignment="Center"
+                      Margin="0,0,8,0"/>
+            <TextBlock Text="Start TextFix when Windows starts"
+                       Foreground="#AAAAAA" FontSize="12" VerticalAlignment="Center"/>
+        </StackPanel>
+
         <!-- History controls: how many to keep, plus a one-click wipe for privacy. -->
         <StackPanel Margin="0,0,0,12">
             <Label Content="Recent corrections to keep (1–100)"/>
