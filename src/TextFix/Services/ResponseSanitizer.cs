@@ -11,11 +11,16 @@ public static class ResponseSanitizer
     // Matched case-insensitively against the first line. Only a *short* first line
     // ending in ':' is treated as a lead-in, so real text starting with "Here is the
     // report we discussed at length..." is never eaten.
+    //
+    // Every marker is deliberately multi-word or an unambiguous interjection. Bare
+    // nouns like "output:" and "result:" are NOT markers — they are common labels in
+    // real text (shell transcripts, Q&A notes), and stripping them silently deletes
+    // user content, which is the one thing this class must never do.
     private static readonly string[] LeadInMarkers =
     [
         "here's the", "here is the", "sure", "certainly", "of course",
         "corrected text", "corrected version", "fixed text", "the corrected",
-        "i've corrected", "i have corrected", "output", "result",
+        "i've corrected", "i have corrected",
     ];
 
     private static readonly string[] ConversationalStarts =

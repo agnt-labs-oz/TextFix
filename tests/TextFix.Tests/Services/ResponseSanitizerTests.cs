@@ -31,10 +31,29 @@ public class ResponseSanitizerTests
     }
 
     [Fact]
-    public void Strip_PreservesInternalQuotes()
+    public void Strip_PreservesInternalQuotes_WhenTextIsNotWrapped()
     {
-        // Only balanced *wrapping* quotes go. A quoted phrase inside the text stays.
         var raw = "He said \"hello\" to her";
+        Assert.Equal(raw, ResponseSanitizer.Strip(raw));
+    }
+
+    [Fact]
+    public void Strip_LeavesQuotesAlone_WhenWrappedTextContainsInternalQuotes()
+    {
+        // Starts AND ends with a quote, so it reaches the nested-quote guard. Ambiguous
+        // between "wrapped text containing a quotation" and two adjacent quoted phrases,
+        // so the conservative answer is to change nothing. This test exists to reach the
+        // guard — without a wrapping quote character the guard is never evaluated at all.
+        var raw = "\"He said \"hello\" to her\"";
+        Assert.Equal(raw, ResponseSanitizer.Strip(raw));
+    }
+
+    [Fact]
+    public void Strip_DoesNotUnwrapSingleQuotes()
+    {
+        // Apostrophes are ubiquitous in English, so a single-quote unwrap can never be
+        // told apart from a contraction. We do not attempt it.
+        var raw = "'I can't believe it worked'";
         Assert.Equal(raw, ResponseSanitizer.Strip(raw));
     }
 
@@ -43,6 +62,13 @@ public class ResponseSanitizerTests
     {
         var raw = "Sure, here you go:\nLine one\nLine two";
         Assert.Equal("Line one\nLine two", ResponseSanitizer.Strip(raw));
+    }
+
+    [Fact]
+    public void Strip_PreservesLabelLinesThatAreNotChatter()
+    {
+        var raw = "Result:\nfile1.txt\nfile2.txt";
+        Assert.Equal(raw, ResponseSanitizer.Strip(raw));
     }
 
     [Fact]
