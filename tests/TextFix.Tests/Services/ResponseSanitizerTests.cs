@@ -51,9 +51,9 @@ public class ResponseSanitizerTests
     [Fact]
     public void Strip_DoesNotUnwrapSingleQuotes()
     {
-        // Apostrophes are ubiquitous in English, so a single-quote unwrap can never be
-        // told apart from a contraction. We do not attempt it.
-        var raw = "'I can't believe it worked'";
+        // No internal apostrophe, so the nested-quote guard cannot be what saves this:
+        // it passes only if the single-quote pair is genuinely absent from `pairs`.
+        var raw = "'hello'";
         Assert.Equal(raw, ResponseSanitizer.Strip(raw));
     }
 

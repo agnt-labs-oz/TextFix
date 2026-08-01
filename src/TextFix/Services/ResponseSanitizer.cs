@@ -82,7 +82,10 @@ public static class ResponseSanitizer
     {
         if (text.Length < 2) return text;
 
-        (char open, char close)[] pairs = [('"', '"'), ('\'', '\''), ('“', '”')];
+        // No single-quote pair: an apostrophe is indistinguishable from a closing
+        // single quote, so contractions (“can't”) would defeat the guard below on
+        // almost every real sentence. Models wrap in double or curly quotes anyway.
+        (char open, char close)[] pairs = [('"', '"'), ('“', '”')];
         foreach (var (open, close) in pairs)
         {
             if (text[0] != open || text[^1] != close) continue;
