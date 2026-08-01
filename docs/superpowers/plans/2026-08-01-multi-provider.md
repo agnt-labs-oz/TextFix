@@ -96,10 +96,29 @@ public class ResponseSanitizerTests
     }
 
     [Fact]
-    public void Strip_PreservesInternalQuotes()
+    public void Strip_PreservesInternalQuotes_WhenTextIsNotWrapped()
     {
-        // Only balanced *wrapping* quotes go. A quoted phrase inside the text stays.
         var raw = "He said \"hello\" to her";
+        Assert.Equal(raw, ResponseSanitizer.Strip(raw));
+    }
+
+    [Fact]
+    public void Strip_LeavesQuotesAlone_WhenWrappedTextContainsInternalQuotes()
+    {
+        // Starts AND ends with a quote, so it reaches the nested-quote guard. Ambiguous
+        // between "wrapped text containing a quotation" and two adjacent quoted phrases,
+        // so the conservative answer is to change nothing. This test exists to reach the
+        // guard — without a wrapping quote character the guard is never evaluated at all.
+        var raw = "\"He said \"hello\" to her\"";
+        Assert.Equal(raw, ResponseSanitizer.Strip(raw));
+    }
+
+    [Fact]
+    public void Strip_DoesNotUnwrapSingleQuotes()
+    {
+        // Apostrophes are ubiquitous in English, so a single-quote unwrap can never be
+        // told apart from a contraction. We do not attempt it.
+        var raw = "'I can't believe it worked'";
         Assert.Equal(raw, ResponseSanitizer.Strip(raw));
     }
 
@@ -161,11 +180,16 @@ public static class ResponseSanitizer
     // Matched case-insensitively against the first line. Only a *short* first line
     // ending in ':' is treated as a lead-in, so real text starting with "Here is the
     // report we discussed at length..." is never eaten.
+    //
+    // Every marker is deliberately multi-word or an unambiguous interjection. Bare
+    // nouns like "output:" and "result:" are NOT markers — they are common labels in
+    // real text (shell transcripts, Q&A notes), and stripping them silently deletes
+    // user content, which is the one thing this class must never do.
     private static readonly string[] LeadInMarkers =
     [
         "here's the", "here is the", "sure", "certainly", "of course",
         "corrected text", "corrected version", "fixed text", "the corrected",
-        "i've corrected", "i have corrected", "output", "result",
+        "i've corrected", "i have corrected",
     ];
 
     private static readonly string[] ConversationalStarts =
@@ -227,7 +251,10 @@ public static class ResponseSanitizer
     {
         if (text.Length < 2) return text;
 
-        (char open, char close)[] pairs = [('"', '"'), ('\'', '\''), ('“', '”')];
+        // No single-quote pair: an apostrophe is indistinguishable from a closing
+        // single quote, so contractions ("can't") would defeat the guard below on
+        // almost every real sentence. Models wrap in double or curly quotes anyway.
+        (char open, char close)[] pairs = [('"', '"'), ('“', '”')];
         foreach (var (open, close) in pairs)
         {
             if (text[0] != open || text[^1] != close) continue;
@@ -264,9 +291,9 @@ public static class ResponseSanitizer
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `dotnet test --filter FullyQualifiedName~ResponseSanitizerTests`
-Expected: PASS, 19 tests.
+Expected: PASS.
 
-If `Strip_PreservesInternalQuotes` fails, the `inner.Contains(close)` guard in `StripWrappingQuotes` is missing or inverted.
+If `Strip_LeavesQuotesAlone_WhenWrappedTextContainsInternalQuotes` fails, the `inner.Contains(close)` guard in `StripWrappingQuotes` is missing or inverted.
 
 - [ ] **Step 5: Run the whole suite**
 
