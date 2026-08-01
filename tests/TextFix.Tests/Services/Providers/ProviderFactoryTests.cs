@@ -73,6 +73,23 @@ public class ProviderFactoryTests
     }
 
     [Fact]
+    public void Create_RebuildsInstance_WhenApiKeyRotatedToSameLengthValue()
+    {
+        // Regression: a length-only cache key would return the cached provider still
+        // holding the old credential. API keys have fixed-length formats, so a rotation
+        // of identical length is the normal case, not an edge case.
+        var settings = new AppSettings { ActiveProviderId = ProviderPresets.AnthropicId };
+        var config = settings.GetProviderConfig(ProviderPresets.AnthropicId);
+        config.SetApiKey("sk-ant-aaaaaaaaaaaaaaaa");
+        var factory = new ProviderFactory(settings);
+        var first = factory.Create();
+
+        config.SetApiKey("sk-ant-bbbbbbbbbbbbbbbb"); // same length, different value
+
+        Assert.NotSame(first, factory.Create());
+    }
+
+    [Fact]
     public void Create_UnknownProviderId_FallsBackToAnthropic()
     {
         // Note the key goes on the *anthropic* config, not "bogus": Get("bogus")

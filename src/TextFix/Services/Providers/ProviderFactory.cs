@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using TextFix.Models;
 
 namespace TextFix.Services.Providers;
@@ -24,8 +26,18 @@ public class ProviderFactory(AppSettings settings)
         if (preset.Key == KeyRequirement.Required && string.IsNullOrWhiteSpace(apiKey))
             return null;
 
-        // Key length rather than the key itself, to keep secrets out of the cache key.
-        var key = string.Join('|', preset.Id, config.BaseUrl, config.Model, apiKey.Length);
+        // Hash rather than store. Two things matter here:
+        //  - The key's VALUE must participate, not just its length: API keys have
+        //    fixed-length formats, so a rotated key is almost always the same length,
+        //    and a length-only cache key would keep serving a provider holding the
+        //    revoked credential.
+        //  - The digest, not the key, is what persists — a cache key outlives the
+        //    call and is visible in debugger views, so the raw secret must not sit in it.
+        // Hashing a NUL-separated tuple also removes any delimiter-collision risk from
+        // user-entered BaseUrl/Model values on the Custom preset.
+        var separator = (char)0;
+        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+            $"{preset.Id}{separator}{config.BaseUrl}{separator}{config.Model}{separator}{apiKey}")));
         if (_cached is not null && _cacheKey == key) return _cached;
 
         _cached = preset.IsOpenAiCompatible
