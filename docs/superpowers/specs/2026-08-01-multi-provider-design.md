@@ -261,8 +261,10 @@ unknown models. That ripples through `StatsAggregate`, `StatsTracker`,
 
 ## Testing
 
-The suite currently has **100 tests** (CLAUDE.md claims 23; that line is stale and will
-be corrected as part of this work). Roughly 30 new tests, weighted toward pure logic.
+The suite currently has **105 tests** (CLAUDE.md claims 23; that line is stale and will
+be corrected as part of this work). Roughly 60 new cases, weighted toward pure logic —
+the per-area counts below are test *methods*; xUnit expands each `[Theory]`'s
+`InlineData` into its own case, so the reported total runs higher.
 
 | Area | Count | Cases |
 |---|---|---|

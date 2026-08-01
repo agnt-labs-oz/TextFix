@@ -18,7 +18,7 @@
 - **API keys are DPAPI-encrypted** with `DataProtectionScope.CurrentUser`. Never persist a plaintext key.
 - **WPF ComboBox dark theme needs a full custom `ControlTemplate`** on both the ComboBox and its items. Setting `Foreground`/`Background` alone is silently ignored. Reuse `OverlayComboBox` / `OverlayComboBoxItem` from `OverlayWindow.xaml:110-170`.
 - **Kill the running app before building** — it holds its DLLs: `taskkill /IM TextFix.exe /F 2>/dev/null; dotnet build`
-- **Test count is 100 before this work.** Every task's final step must leave the whole suite green: `dotnet test`.
+- **Test count is 105 before this work** (xUnit expands each `[Theory]`'s `InlineData` into its own case, so this is higher than the count of test *methods*). The per-task "expected N passing" figures below are approximate for the same reason — the binding requirement is that `dotnet test` is green and every new test passes, not that it hits a predicted total.
 - Target framework `net10.0-windows`. Nullable enabled. File-scoped namespaces, matching the existing code.
 
 ---
