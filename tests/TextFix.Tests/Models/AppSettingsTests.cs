@@ -250,4 +250,85 @@ public class AppSettingsTests : IDisposable
         var settings = new AppSettings();
         Assert.Equal("Warn", settings.LogLevel);
     }
+
+    [Fact]
+    public async Task LoadAsync_MigratesLegacyKeyAndModelToAnthropicProvider()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"tf-{Guid.NewGuid():N}.json");
+        try
+        {
+            var legacy = new AppSettings { Model = "claude-opus-4-6" };
+            legacy.SetApiKey("sk-ant-legacy");
+            await legacy.SaveAsync(path);
+
+            var loaded = await AppSettings.LoadAsync(path);
+
+            var anthropic = loaded.GetProviderConfig("anthropic");
+            Assert.Equal("sk-ant-legacy", anthropic.GetApiKey());
+            Assert.Equal("claude-opus-4-6", anthropic.Model);
+            Assert.Equal("anthropic", loaded.ActiveProviderId);
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task LoadAsync_MigrationIsIdempotent()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"tf-{Guid.NewGuid():N}.json");
+        try
+        {
+            var legacy = new AppSettings { Model = "claude-opus-4-6" };
+            legacy.SetApiKey("sk-ant-legacy");
+            await legacy.SaveAsync(path);
+
+            var first = await AppSettings.LoadAsync(path);
+            await first.SaveAsync(path);
+            var second = await AppSettings.LoadAsync(path);
+
+            // A second load must not append a duplicate anthropic entry.
+            Assert.Single(second.Providers, p => p.Id == "anthropic");
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task ProviderConfig_ApiKeyRoundTripsThroughDpapi()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"tf-{Guid.NewGuid():N}.json");
+        try
+        {
+            var settings = new AppSettings();
+            settings.GetProviderConfig("openai").SetApiKey("sk-openai-secret");
+            await settings.SaveAsync(path);
+
+            var raw = await File.ReadAllTextAsync(path);
+            Assert.DoesNotContain("sk-openai-secret", raw);
+
+            var loaded = await AppSettings.LoadAsync(path);
+            Assert.Equal("sk-openai-secret", loaded.GetProviderConfig("openai").GetApiKey());
+        }
+        finally { if (File.Exists(path)) File.Delete(path); }
+    }
+
+    [Fact]
+    public void GetProviderConfig_CreatesAndReusesEntry()
+    {
+        var settings = new AppSettings();
+
+        var first = settings.GetProviderConfig("ollama");
+        first.Model = "llama3.2:3b";
+        var second = settings.GetProviderConfig("ollama");
+
+        Assert.Same(first, second);
+        Assert.Equal("llama3.2:3b", second.Model);
+    }
+
+    [Fact]
+    public void ActiveProvider_FollowsActiveProviderId()
+    {
+        var settings = new AppSettings { ActiveProviderId = "ollama" };
+        settings.GetProviderConfig("ollama").Model = "qwen2.5:3b";
+
+        Assert.Equal("qwen2.5:3b", settings.ActiveProvider.Model);
+    }
 }

@@ -1,8 +1,7 @@
 using System.IO;
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using TextFix.Services;
 
 namespace TextFix.Models;
 
@@ -43,6 +42,31 @@ public class AppSettings
 
     public List<CorrectionMode> CustomModes { get; set; } = [];
 
+    /// <summary>Which provider corrections currently run against.</summary>
+    public string ActiveProviderId { get; set; } = "anthropic";
+
+    /// <summary>Per-provider model and key. Populated lazily by GetProviderConfig.</summary>
+    public List<ProviderConfig> Providers { get; set; } = [];
+
+    /// <summary>
+    /// Returns the config for <paramref name="id"/>, creating and storing an empty one
+    /// on first use. Always returns the same instance for the same id, so callers can
+    /// mutate the result directly.
+    /// </summary>
+    public ProviderConfig GetProviderConfig(string id)
+    {
+        var existing = Providers.FirstOrDefault(
+            p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null) return existing;
+
+        var created = new ProviderConfig { Id = id };
+        Providers.Add(created);
+        return created;
+    }
+
+    [JsonIgnore]
+    public ProviderConfig ActiveProvider => GetProviderConfig(ActiveProviderId);
+
     // Persisted overlay bounds for the result/diff view. null = unset (use defaults / position near cursor).
     public double? OverlayWidth { get; set; }
     public double? OverlayHeight { get; set; }
@@ -72,46 +96,15 @@ public class AppSettings
 
     public string GetApiKey()
     {
-        // Prefer encrypted key
-        if (!string.IsNullOrEmpty(EncryptedApiKey))
-        {
-            try
-            {
-                var encrypted = Convert.FromBase64String(EncryptedApiKey);
-                var plain = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
-                return Encoding.UTF8.GetString(plain);
-            }
-            catch
-            {
-                return "";
-            }
-        }
-
-        // Fall back to legacy plaintext key (migration)
-        return ApiKey;
+        var fromEncrypted = DpapiString.Unprotect(EncryptedApiKey);
+        // Fall back to the legacy plaintext key during migration.
+        return string.IsNullOrEmpty(fromEncrypted) ? ApiKey : fromEncrypted;
     }
 
     public void SetApiKey(string plainKey)
     {
-        if (string.IsNullOrEmpty(plainKey))
-        {
-            EncryptedApiKey = "";
-            ApiKey = "";
-            return;
-        }
-
-        try
-        {
-            var plain = Encoding.UTF8.GetBytes(plainKey);
-            var encrypted = ProtectedData.Protect(plain, null, DataProtectionScope.CurrentUser);
-            EncryptedApiKey = Convert.ToBase64String(encrypted);
-            ApiKey = ""; // Clear legacy plaintext
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException(
-                "Failed to encrypt API key with DPAPI. Cannot store key securely.", ex);
-        }
+        EncryptedApiKey = DpapiString.Protect(plainKey);
+        ApiKey = ""; // Never re-persist the legacy plaintext field.
     }
 
     public async Task SaveAsync(string? path = null)
@@ -150,6 +143,19 @@ public class AppSettings
                 var legacy = settings.ApiKey;
                 settings.ApiKey = "";
                 settings.SetApiKey(legacy);
+                await settings.SaveAsync(path);
+            }
+
+            // Migrate the single top-level key+model onto the anthropic provider config.
+            // Guarded on "no anthropic entry" rather than "Providers is empty" so it
+            // stays idempotent across repeated loads.
+            var hasAnthropic = settings.Providers.Any(
+                p => string.Equals(p.Id, "anthropic", StringComparison.OrdinalIgnoreCase));
+            if (!hasAnthropic)
+            {
+                var anthropic = settings.GetProviderConfig("anthropic");
+                anthropic.EncryptedApiKey = settings.EncryptedApiKey;
+                anthropic.Model = settings.Model;
                 await settings.SaveAsync(path);
             }
 
