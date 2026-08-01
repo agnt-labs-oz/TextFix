@@ -2,6 +2,7 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using TextFix.Services;
+using TextFix.Services.Providers;
 
 namespace TextFix.Models;
 
@@ -43,7 +44,7 @@ public class AppSettings
     public List<CorrectionMode> CustomModes { get; set; } = [];
 
     /// <summary>Which provider corrections currently run against.</summary>
-    public string ActiveProviderId { get; set; } = "anthropic";
+    public string ActiveProviderId { get; set; } = ProviderPresets.AnthropicId;
 
     /// <summary>Per-provider model and key. Populated lazily by GetProviderConfig.</summary>
     public List<ProviderConfig> Providers { get; set; } = [];
@@ -147,13 +148,22 @@ public class AppSettings
             }
 
             // Migrate the single top-level key+model onto the anthropic provider config.
-            // Guarded on "no anthropic entry" rather than "Providers is empty" so it
-            // stays idempotent across repeated loads.
+            // Guarded on "no anthropic entry" rather than "Providers is empty" so a
+            // second load cannot append a duplicate.
+            //
+            // KNOWN LIMITATION — read this before adding a "remove provider" feature.
+            // This guard cannot distinguish "never migrated" from "migrated, then the
+            // user deleted the anthropic entry". Because the top-level EncryptedApiKey
+            // and Model fields are kept populated for old-build compatibility, deleting
+            // the anthropic provider would cause the next load to silently recreate it
+            // from those fields — resurrecting a credential the user removed on purpose.
+            // Unreachable today (nothing removes a provider). Whoever adds removal must
+            // introduce a schema-version or migration-completed marker at that point.
             var hasAnthropic = settings.Providers.Any(
-                p => string.Equals(p.Id, "anthropic", StringComparison.OrdinalIgnoreCase));
+                p => string.Equals(p.Id, ProviderPresets.AnthropicId, StringComparison.OrdinalIgnoreCase));
             if (!hasAnthropic)
             {
-                var anthropic = settings.GetProviderConfig("anthropic");
+                var anthropic = settings.GetProviderConfig(ProviderPresets.AnthropicId);
                 anthropic.EncryptedApiKey = settings.EncryptedApiKey;
                 anthropic.Model = settings.Model;
                 await settings.SaveAsync(path);
