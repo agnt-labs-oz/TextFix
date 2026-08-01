@@ -412,6 +412,36 @@ public class ProviderPresetsTests
             ProviderPresets.All.Where(p => p.IsOpenAiCompatible),
             p => Assert.False(string.IsNullOrWhiteSpace(p.TokenParam)));
     }
+
+    // Pins every field of every preset. The named tests above document *why* the
+    // load-bearing values are what they are; this one catches silent drift in the
+    // ones no named test covers — dropping the "/v1" suffix from OpenAI's base URL
+    // would break every OpenAI call while leaving the rest of the suite green.
+    // Adding a provider means adding a row here too, which is the intended coupling.
+    [Theory]
+    [InlineData("anthropic", "Anthropic", "", KeyRequirement.Required,
+        "claude-haiku-4-5-20251001", 10, "", false)]
+    [InlineData("ollama", "Ollama (local)", "http://localhost:11434/v1", KeyRequirement.None,
+        "", 120, "max_tokens", true)]
+    [InlineData("openai", "OpenAI", "https://api.openai.com/v1", KeyRequirement.Required,
+        "gpt-4o-mini", 30, "max_completion_tokens", true)]
+    [InlineData("custom", "Custom (OpenAI-compatible)", "", KeyRequirement.Optional,
+        "", 120, "max_tokens", true)]
+    public void Preset_HasExactSpecifiedValues(
+        string id, string displayName, string baseUrl, KeyRequirement key,
+        string defaultModel, int timeoutSeconds, string tokenParam, bool isOpenAiCompatible)
+    {
+        var p = ProviderPresets.Get(id);
+
+        Assert.Equal(id, p.Id);
+        Assert.Equal(displayName, p.DisplayName);
+        Assert.Equal(baseUrl, p.BaseUrl);
+        Assert.Equal(key, p.Key);
+        Assert.Equal(defaultModel, p.DefaultModel);
+        Assert.Equal(timeoutSeconds, p.TimeoutSeconds);
+        Assert.Equal(tokenParam, p.TokenParam);
+        Assert.Equal(isOpenAiCompatible, p.IsOpenAiCompatible);
+    }
 }
 ```
 
