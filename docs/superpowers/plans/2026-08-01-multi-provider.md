@@ -1997,7 +1997,6 @@ Add to `App.xaml.cs`, next to the existing mode-switching code:
     {
         _settings.ActiveProviderId = providerId;
         RebuildServices();
-        RefreshProviderMenu();
         try
         {
             await _settings.SaveAsync();
@@ -2009,11 +2008,7 @@ Add to `App.xaml.cs`, next to the existing mode-switching code:
     }
 ```
 
-`RefreshProviderMenu` is added in Task 10. For now, stub it as an empty private method so this task builds and commits on its own:
-
-```csharp
-    private void RefreshProviderMenu() { }
-```
+Nothing calls `SwitchProvider` yet — Task 10 adds the overlay and tray callers, and adds the `RefreshProviderMenu()` call to this method at the same time. Do **not** add an empty `RefreshProviderMenu` stub here; an empty method with no caller is dead code, and Task 10 defines it properly.
 
 - [ ] **Step 3: Handle the no-provider case on hotkey press**
 
@@ -2445,7 +2440,7 @@ In `App.xaml.cs`, after the mode menu is added (line 211):
         _trayIcon.ContextMenuStrip.Items.Add(providerMenu);
 ```
 
-Replace the `RefreshProviderMenu` stub from Task 8 with the real implementation, and push the same state to the overlay:
+Add `RefreshProviderMenu`, and add a call to it inside `SwitchProvider` (from Task 8) right after `RebuildServices()`:
 
 ```csharp
     private void RefreshProviderMenu()
@@ -2546,7 +2541,11 @@ In the constructor:
         _elapsedTimer.Tick += (_, _) =>
         {
             var elapsed = DateTime.UtcNow - _processingStartedAt;
-            ProcessingDetailText.Text = $"{_processingProviderLabel}   {elapsed.TotalSeconds:0.0}s";
+            // Showing the budget alongside the elapsed time is what turns a long
+            // local cold start from "hung" into "working, and here's the deadline".
+            var budget = _processingTimeoutSeconds > 0 ? $" / {_processingTimeoutSeconds}s" : "";
+            ProcessingDetailText.Text =
+                $"{_processingProviderLabel}   {elapsed.TotalSeconds:0.0}s{budget}";
         };
 ```
 
@@ -2601,7 +2600,7 @@ Run a correction against Ollama with a model that is **not** currently loaded, s
 ollama stop llama3.2:3b
 ```
 
-1. The overlay shows `Ollama (local) · llama3.2:3b   4.3s`, ticking upward.
+1. The overlay shows `Ollama (local) · llama3.2:3b   4.3s / 120s`, ticking upward.
 2. Cancel still works mid-flight.
 3. The counter stops when the result appears and does not resume.
 4. Note the actual cold-start time. If it exceeds 120s on your hardware, raise `TimeoutSeconds` for the Ollama preset in `ProviderPresets.cs` and say so in the commit message.
