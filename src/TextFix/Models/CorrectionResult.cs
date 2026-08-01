@@ -10,6 +10,10 @@ public record CorrectionResult
     public DateTime Timestamp { get; init; } = DateTime.UtcNow;
     public string ModeName { get; init; } = "";
     public string Model { get; init; } = "";
+    public string ProviderId { get; init; } = "anthropic";
+    public bool IsLocal { get; init; }
+    /// <summary>Set when the model replied conversationally; drives the overlay warning.</summary>
+    public bool LooksConversational { get; init; }
     public int InputTokens { get; init; }
     public int OutputTokens { get; init; }
 

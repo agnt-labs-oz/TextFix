@@ -4,75 +4,83 @@ using Anthropic.Exceptions;
 using Anthropic.Models.Messages;
 using TextFix.Models;
 
-namespace TextFix.Services;
+namespace TextFix.Services.Providers;
 
-public class AiClient
+public class AnthropicProvider : IAiProvider
 {
     private readonly AnthropicClient _client;
-    private readonly AppSettings _settings;
-    private const int MaxTextLength = 5000;
+    private readonly string _model;
 
-    public AiClient(AppSettings settings)
+    public string DisplayName => "Anthropic";
+    public string ProviderId => ProviderPresets.AnthropicId;
+    public bool IsLocal => false;
+
+    /// <summary>Offered in the model dropdown. Not fetched from the API.</summary>
+    public static readonly string[] KnownModels =
+    [
+        "claude-haiku-4-5-20251001",
+        "claude-sonnet-4-5-20250929",
+        "claude-sonnet-4-6",
+        "claude-opus-4-6",
+    ];
+
+    public AnthropicProvider(string apiKey, string model, int timeoutSeconds)
     {
-        var apiKey = settings.GetApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("API key is not configured. Set your API key in Settings.");
 
-        _settings = settings;
+        _model = string.IsNullOrWhiteSpace(model) ? KnownModels[0] : model;
         _client = new AnthropicClient
         {
             ApiKey = apiKey,
-            Timeout = TimeSpan.FromSeconds(10),
+            Timeout = TimeSpan.FromSeconds(timeoutSeconds),
         };
     }
+
+    public Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<string>>(KnownModels);
 
     public async Task<CorrectionResult> CorrectAsync(string text, string systemPrompt, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(text))
             return CorrectionResult.Error(text, "Text is empty.");
 
-        if (text.Length > MaxTextLength)
-            return CorrectionResult.Error(text, $"Text too long ({text.Length} chars). Select a shorter passage (max {MaxTextLength}).");
+        if (text.Length > PromptTemplates.MaxTextLength)
+            return CorrectionResult.Error(text, $"Text too long ({text.Length} chars). Select a shorter passage (max {PromptTemplates.MaxTextLength}).");
 
         try
         {
             var parameters = new MessageCreateParams
             {
-                Model = _settings.Model,
+                Model = _model,
                 MaxTokens = 4096,
-                System = systemPrompt + "\n\nYou are a text transformation tool, not a chatbot. Output ONLY the transformed text — nothing else. Never explain, comment, apologize, ask questions, or refuse. If the input is unclear or nonsensical, return it unchanged.",
+                System = systemPrompt + PromptTemplates.PrefillSuffix,
                 Messages =
                 [
-                    new MessageParam { Role = Role.User, Content = $"Transform this text:\n<text>\n{text}\n</text>\n\nOutput only the result:" },
+                    new MessageParam { Role = Role.User, Content = PromptTemplates.UserMessage(text) },
+                    // Prefill: forces bare output. Anthropic-only — this is why
+                    // AnthropicProvider does not need ResponseSanitizer.
                     new MessageParam { Role = Role.Assistant, Content = "<result>" },
                 ],
             };
 
             var message = await _client.Messages.Create(parameters, ct);
             var raw = message.Content
-                .Select(block =>
-                {
-                    if (block.TryPickText(out var tb)) return tb.Text;
-                    return null;
-                })
-                .Where(t => t is not null)
-                .FirstOrDefault() ?? text;
+                .Select(block => block.TryPickText(out var tb) ? tb.Text : null)
+                .FirstOrDefault(t => t is not null) ?? text;
 
-            // Strip the closing </result> tag from the prefilled response
-            var corrected = raw
-                .Replace("</result>", "")
-                .Trim();
+            var corrected = raw.Replace("</result>", "").Trim();
 
-            // Detect when the model returned a conversational response instead of
-            // corrected text — this happens with ambiguous/nonsensical input.
-            if (string.IsNullOrWhiteSpace(corrected) || LooksLikeRefusal(corrected))
+            if (string.IsNullOrWhiteSpace(corrected))
                 return CorrectionResult.Error(text, "Couldn't improve this text — try selecting a clearer passage.");
 
             return new CorrectionResult
             {
                 OriginalText = text,
                 CorrectedText = corrected,
-                Model = _settings.Model,
+                Model = _model,
+                ProviderId = ProviderId,
+                IsLocal = false,
                 InputTokens = (int)(message.Usage?.InputTokens ?? 0),
                 OutputTokens = (int)(message.Usage?.OutputTokens ?? 0),
             };
@@ -83,7 +91,8 @@ public class AiClient
         }
         catch (OperationCanceledException)
         {
-            // HttpClient timeout throws TaskCanceledException (subclass of OperationCanceledException)
+            // HttpClient timeout throws TaskCanceledException, a subclass of
+            // OperationCanceledException. Only reachable when the user did not cancel.
             return CorrectionResult.Error(text, "Request timed out — check your connection.");
         }
         catch (AnthropicUnauthorizedException)
@@ -110,24 +119,5 @@ public class AiClient
         {
             return CorrectionResult.Error(text, "An unexpected error occurred.");
         }
-    }
-
-    private static bool LooksLikeRefusal(string response)
-    {
-        // If the response is much longer than expected for a correction and
-        // starts with common refusal/explanation patterns, it's not corrected text.
-        var lower = response.TrimStart().ToLowerInvariant();
-        string[] refusalStarts =
-        [
-            "i'm unable", "i am unable", "i cannot", "i can't",
-            "the input", "the text", "this text", "this input",
-            "sorry", "apologi", "unfortunately",
-        ];
-        foreach (var prefix in refusalStarts)
-        {
-            if (lower.StartsWith(prefix))
-                return true;
-        }
-        return false;
     }
 }

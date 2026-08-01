@@ -1,4 +1,5 @@
 using TextFix.Models;
+using TextFix.Services.Providers;
 
 namespace TextFix.Services;
 
@@ -8,13 +9,13 @@ public class CorrectionService
     private readonly FocusTracker _focusTracker;
     private readonly AppSettings _settings;
     private readonly CorrectionHistory _history;
-    private AiClient _aiClient;
+    private IAiProvider _aiClient;
     private CancellationTokenSource? _cts;
 
     public CorrectionResult? LastResult { get; private set; }
     public CorrectionHistory History => _history;
 
-    public CorrectionService(ClipboardManager clipboard, FocusTracker focusTracker, AiClient aiClient, AppSettings settings, CorrectionHistory? history = null)
+    public CorrectionService(ClipboardManager clipboard, FocusTracker focusTracker, IAiProvider aiClient, AppSettings settings, CorrectionHistory? history = null)
     {
         _clipboard = clipboard;
         _focusTracker = focusTracker;
@@ -23,7 +24,7 @@ public class CorrectionService
         _history = history ?? new CorrectionHistory();
     }
 
-    public void UpdateAiClient(AiClient aiClient) => _aiClient = aiClient;
+    public void UpdateProvider(IAiProvider aiClient) => _aiClient = aiClient;
 
     public event Action? ProcessingStarted;
     public event Action<CorrectionResult>? CorrectionCompleted;

@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using TextFix.Interop;
 using TextFix.Models;
 using TextFix.Services;
+using TextFix.Services.Providers;
 using TextFix.Views;
 using Velopack;
 using Application = System.Windows.Application;
@@ -40,7 +41,7 @@ public partial class App : Application
     private ToolStripMenuItem? _historyMenu;
     private HotkeyListener? _hotkeyListener;
     private CorrectionService? _correctionService;
-    private AiClient? _aiClient;
+    private IAiProvider? _aiClient;
     private ClipboardManager? _clipboardManager;
     private FocusTracker? _focusTracker;
     private OverlayWindow? _overlay;
@@ -419,7 +420,7 @@ public partial class App : Application
         _focusTracker = new FocusTracker();
 
         if (!string.IsNullOrWhiteSpace(_settings.GetApiKey()))
-            _aiClient = new AiClient(_settings);
+            _aiClient = new AnthropicProvider(_settings.GetApiKey(), _settings.Model, timeoutSeconds: 10);
 
         var history = await CorrectionHistory.LoadAsync(maxItems: _settings.HistoryMaxItems);
         _statsTracker = new StatsTracker(StatsTracker.DefaultPath);
@@ -453,9 +454,9 @@ public partial class App : Application
     private void RebuildServices()
     {
         _aiClient = !string.IsNullOrWhiteSpace(_settings.GetApiKey())
-            ? new AiClient(_settings)
+            ? new AnthropicProvider(_settings.GetApiKey(), _settings.Model, timeoutSeconds: 10)
             : null;
-        _correctionService?.UpdateAiClient(_aiClient!);
+        _correctionService?.UpdateProvider(_aiClient!);
     }
 
     private void RegisterHotkey()
