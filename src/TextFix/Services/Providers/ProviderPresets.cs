@@ -35,5 +35,5 @@ public static class ProviderPresets
     /// </summary>
     public static ProviderPreset Get(string? id) =>
         All.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase))
-        ?? All[0];
+        ?? All.First(p => p.Id == AnthropicId);
 }
