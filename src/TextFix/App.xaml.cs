@@ -472,6 +472,19 @@ public partial class App : Application
             Dispatcher.Invoke(() => _overlay?.ShowFocusLost());
     }
 
+    /// <summary>
+    /// Rebuilds the active provider from current settings. Every path that can change a
+    /// provider's credentials must go through here, so the factory cache cannot keep
+    /// serving a provider holding a revoked key.
+    /// </summary>
+    /// <remarks>
+    /// INVARIANT: when <c>Create()</c> returns null (a key-requiring provider with no key),
+    /// <see cref="CorrectionService"/> keeps its previous provider — <c>UpdateProvider</c>
+    /// takes a non-nullable argument, so there is nothing to hand it. That stale instance is
+    /// unreachable only because every caller gates on <c>_aiClient is null</c> first. Any new
+    /// code path that invokes _correctionService MUST do the same, or it will silently run
+    /// against the provider the user just switched away from.
+    /// </remarks>
     private void RebuildServices()
     {
         _providerFactory?.Invalidate();
