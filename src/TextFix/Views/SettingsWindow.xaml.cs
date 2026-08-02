@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using TextFix.Models;
 using TextFix.Services;
+using TextFix.Services.Providers;
 using WpfButton = System.Windows.Controls.Button;
 using WpfMessageBox = System.Windows.MessageBox;
 
@@ -13,16 +14,6 @@ public partial class SettingsWindow : Window
     private readonly CorrectionHistory? _history;
     private bool _keyVisible;
 
-    public static readonly string[] KnownModels =
-    [
-        "claude-haiku-4-5-20251001",
-        "claude-sonnet-4-5-20250514",
-        "claude-sonnet-4-6",
-        "claude-sonnet-4-7",
-        "claude-opus-4-6",
-        "claude-opus-4-7",
-    ];
-
     public bool SettingsChanged { get; private set; }
     public bool HistoryCleared { get; private set; }
 
@@ -32,17 +23,11 @@ public partial class SettingsWindow : Window
         _settings = settings;
         _history = history;
 
-        ApiKeyBox.Password = settings.GetApiKey();
         HotkeyBox.Text = settings.Hotkey;
 
-        foreach (var model in KnownModels)
-            ModelBox.Items.Add(model);
-        ModelBox.SelectedItem = settings.Model;
-        if (ModelBox.SelectedItem is null)
-        {
-            ModelBox.Items.Add(settings.Model);
-            ModelBox.SelectedItem = settings.Model;
-        }
+        foreach (var preset in ProviderPresets.All)
+            ProviderBox.Items.Add(new ComboBoxItem { Content = preset.DisplayName, Tag = preset.Id });
+        SelectProvider(settings.ActiveProviderId);
 
         RefreshModeBox();
 
@@ -266,6 +251,190 @@ public partial class SettingsWindow : Window
             System.Windows.Clipboard.SetText(key);
     }
 
+    private string CurrentProviderId =>
+        (ProviderBox.SelectedItem as ComboBoxItem)?.Tag as string ?? ProviderPresets.AnthropicId;
+
+    private void SelectProvider(string id)
+    {
+        for (var i = 0; i < ProviderBox.Items.Count; i++)
+        {
+            if (ProviderBox.Items[i] is ComboBoxItem item && (string)item.Tag == id)
+            {
+                ProviderBox.SelectedIndex = i;
+                return;
+            }
+        }
+        ProviderBox.SelectedIndex = 0;
+    }
+
+    /// <summary>Persists whatever is in the fields to the config for <paramref name="id"/>.</summary>
+    private void StoreFieldsInto(string id)
+    {
+        var config = _settings.GetProviderConfig(id);
+        config.BaseUrl = BaseUrlBox.Text.Trim();
+        config.Model = (ModelBox.Text ?? "").Trim();
+        var key = _keyVisible ? ApiKeyTextBox.Text.Trim() : ApiKeyBox.Password.Trim();
+        config.SetApiKey(key);
+    }
+
+    private void LoadFieldsFrom(string id)
+    {
+        var preset = ProviderPresets.Get(id);
+        var config = _settings.GetProviderConfig(id);
+
+        BaseUrlBox.Text = string.IsNullOrWhiteSpace(config.BaseUrl) ? preset.BaseUrl : config.BaseUrl;
+        ApiKeyBox.Password = config.GetApiKey();
+        ApiKeyTextBox.Text = "";
+        _keyVisible = false;
+        ApiKeyBox.Visibility = Visibility.Visible;
+        ApiKeyTextBox.Visibility = Visibility.Collapsed;
+
+        ModelBox.Items.Clear();
+        if (!preset.IsOpenAiCompatible)
+        {
+            foreach (var m in AnthropicProvider.KnownModels)
+                ModelBox.Items.Add(m);
+        }
+        ModelBox.Text = string.IsNullOrWhiteSpace(config.Model) ? preset.DefaultModel : config.Model;
+
+        // Anthropic goes through its SDK: no base URL to edit, and its ListModelsAsync
+        // is a static list, so a connection test that cannot fail would be a lie.
+        BaseUrlPanel.Visibility = preset.IsOpenAiCompatible ? Visibility.Visible : Visibility.Collapsed;
+        TestConnectionPanel.Visibility = preset.IsOpenAiCompatible ? Visibility.Visible : Visibility.Collapsed;
+        RefreshModelsButton.Visibility = preset.IsOpenAiCompatible ? Visibility.Visible : Visibility.Collapsed;
+        ApiKeyPanel.Visibility = preset.Key == KeyRequirement.None ? Visibility.Collapsed : Visibility.Visible;
+
+        ConnectionStatusText.Text = "";
+    }
+
+    private string? _loadedProviderId;
+
+    private void OnProviderChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded && _loadedProviderId is null)
+        {
+            _loadedProviderId = CurrentProviderId;
+            LoadFieldsFrom(_loadedProviderId);
+            return;
+        }
+
+        // Keep the outgoing provider's edits before repainting for the incoming one.
+        if (_loadedProviderId is not null)
+            StoreFieldsInto(_loadedProviderId);
+
+        _loadedProviderId = CurrentProviderId;
+        LoadFieldsFrom(_loadedProviderId);
+    }
+
+    private async void OnRefreshModels(object sender, RoutedEventArgs e)
+    {
+        StoreFieldsInto(CurrentProviderId);
+        var models = await TryListModelsAsync();
+        if (models is null) return;
+
+        var current = ModelBox.Text;
+        ModelBox.Items.Clear();
+        foreach (var m in models) ModelBox.Items.Add(m);
+        ModelBox.Text = models.Contains(current) ? current : models.FirstOrDefault() ?? "";
+    }
+
+    private async void OnTestConnection(object sender, RoutedEventArgs e)
+    {
+        StoreFieldsInto(CurrentProviderId);
+        ConnectionStatusText.Foreground = System.Windows.Media.Brushes.Gray;
+        ConnectionStatusText.Text = "Testing…";
+
+        var models = await TryListModelsAsync();
+        if (models is null) return;
+
+        ConnectionStatusText.Foreground = System.Windows.Media.Brushes.MediumSeaGreen;
+        ConnectionStatusText.Text = $"Connected — {models.Count} model{(models.Count == 1 ? "" : "s")}";
+    }
+
+    /// <summary>
+    /// Lists models for the current provider, painting the failure into the status
+    /// line and returning null. Never throws.
+    /// </summary>
+    private async Task<IReadOnlyList<string>?> TryListModelsAsync()
+    {
+        var preset = ProviderPresets.Get(CurrentProviderId);
+        var config = _settings.GetProviderConfig(preset.Id);
+
+        try
+        {
+            var provider = new OpenAiCompatibleProvider(
+                preset, config.BaseUrl, config.Model, config.GetApiKey());
+            var models = await provider.ListModelsAsync();
+            if (models.Count == 0)
+            {
+                ConnectionStatusText.Foreground = System.Windows.Media.Brushes.Goldenrod;
+                ConnectionStatusText.Text = preset.Id == ProviderPresets.OllamaId
+                    ? "Reachable, but no models pulled. Run: ollama pull llama3.2:3b"
+                    : "Reachable, but the endpoint listed no models.";
+                return null;
+            }
+            return models;
+        }
+        catch (Exception ex)
+        {
+            ConnectionStatusText.Foreground = System.Windows.Media.Brushes.IndianRed;
+            var url = string.IsNullOrWhiteSpace(config.BaseUrl) ? preset.BaseUrl : config.BaseUrl;
+            ConnectionStatusText.Text = preset.Id == ProviderPresets.OllamaId
+                ? $"Cannot reach {url} — is Ollama running? Install it from ollama.com"
+                : $"Cannot reach {url} — {ex.Message}";
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Validates the endpoint fields for the selected provider, showing a message and
+    /// returning false if they cannot work. Only OpenAI-compatible providers have an
+    /// editable Base URL; Anthropic's is fixed by its SDK.
+    /// </summary>
+    private bool ValidateProviderFields()
+    {
+        var preset = ProviderPresets.Get(CurrentProviderId);
+
+        // Presets carry an example only where one exists: Custom has no Base URL, and
+        // neither Ollama nor Custom has a default model, because both depend entirely on
+        // what the user has actually pulled or deployed. Never render a bare "Example: ".
+        var urlHint = string.IsNullOrEmpty(preset.BaseUrl)
+            ? "" : $" Example: {preset.BaseUrl}";
+        var modelHint = string.IsNullOrEmpty(preset.DefaultModel)
+            ? "" : $" Example: {preset.DefaultModel}";
+
+        if (preset.IsOpenAiCompatible)
+        {
+            var baseUrl = BaseUrlBox.Text.Trim();
+            if (string.IsNullOrEmpty(baseUrl))
+            {
+                WpfMessageBox.Show(
+                    $"{preset.DisplayName} needs a Base URL.{urlHint}",
+                    "TextFix", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                WpfMessageBox.Show(
+                    $"Base URL must be a full http:// or https:// address.{urlHint}",
+                    "TextFix", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(ModelBox.Text))
+        {
+            WpfMessageBox.Show(
+                $"Choose a model for {preset.DisplayName}.{modelHint}",
+                "TextFix", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        return true;
+    }
+
     private async void OnSave(object sender, RoutedEventArgs e)
     {
         var hotkeyText = HotkeyBox.Text.Trim();
@@ -277,10 +446,11 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        var apiKey = _keyVisible ? ApiKeyTextBox.Text.Trim() : ApiKeyBox.Password.Trim();
-        _settings.SetApiKey(apiKey);
+        if (!ValidateProviderFields()) return;
+
+        StoreFieldsInto(CurrentProviderId);
+        _settings.ActiveProviderId = CurrentProviderId;
         _settings.Hotkey = hotkeyText;
-        _settings.Model = ModelBox.SelectedItem as string ?? _settings.Model;
         _settings.ActiveModeName = ModeBox.SelectedItem as string ?? _settings.ActiveModeName;
 
         var autoApplyText = AutoApplyBox.Text.Trim();

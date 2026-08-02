@@ -147,8 +147,20 @@
                       HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
         <StackPanel>
 
-        <!-- API Key with show/copy buttons -->
+        <!-- Provider -->
         <StackPanel>
+            <Label Content="Provider"/>
+            <ComboBox x:Name="ProviderBox" SelectionChanged="OnProviderChanged"/>
+        </StackPanel>
+
+        <!-- Base URL (hidden for Anthropic) -->
+        <StackPanel x:Name="BaseUrlPanel">
+            <Label Content="Base URL"/>
+            <TextBox x:Name="BaseUrlBox" Style="{StaticResource FieldBox}"/>
+        </StackPanel>
+
+        <!-- API key (hidden when the provider needs none) -->
+        <StackPanel x:Name="ApiKeyPanel">
             <Label Content="API Key"/>
             <Grid Margin="0,4,0,12">
                 <Grid.ColumnDefinitions>
@@ -169,9 +181,27 @@
             </Grid>
         </StackPanel>
 
+        <!-- Model, with refresh + connection test -->
         <StackPanel>
             <Label Content="Model"/>
-            <ComboBox x:Name="ModelBox"/>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <ComboBox x:Name="ModelBox" Grid.Column="0" IsEditable="True"/>
+                <Button x:Name="RefreshModelsButton" Grid.Column="1" Content="&#x21BB;"
+                        Style="{StaticResource SmallButton}" Margin="4,0,0,0"
+                        AutomationProperties.Name="Refresh model list"
+                        ToolTip="Fetch available models" Click="OnRefreshModels"/>
+            </Grid>
+            <StackPanel x:Name="TestConnectionPanel" Orientation="Horizontal" Margin="0,6,0,0">
+                <Button x:Name="TestConnectionButton" Content="Test connection"
+                        Style="{StaticResource SmallButton}" Padding="8,2"
+                        Click="OnTestConnection"/>
+                <TextBlock x:Name="ConnectionStatusText" Margin="8,0,0,0" FontSize="11"
+                           VerticalAlignment="Center" TextWrapping="Wrap"/>
+            </StackPanel>
         </StackPanel>
 
         <StackPanel>
