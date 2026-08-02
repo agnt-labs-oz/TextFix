@@ -2355,16 +2355,95 @@ Add these members:
 
 Add `using TextFix.Services.Providers;`.
 
-- [ ] **Step 3: Update `OnSave`**
+- [ ] **Step 3: Update `OnSave`, and validate the endpoint fields**
+
+**AMENDED 2026-08-03 (controller)** to discharge the carry-forward recorded during Task 5's
+review: *a blank Custom `BaseUrl` currently surfaces as a generic "unexpected error" at
+correction time; Settings must validate the field.* The original step had no validation at
+all, so that carry-forward would have been silently dropped.
 
 In `OnSave` (line 269), replace the API-key and model lines (280-283) with:
 
 ```csharp
+        if (!ValidateProviderFields()) return;
+
         StoreFieldsInto(CurrentProviderId);
         _settings.ActiveProviderId = CurrentProviderId;
         _settings.Hotkey = hotkeyText;
         _settings.ActiveModeName = ModeBox.SelectedItem as string ?? _settings.ActiveModeName;
 ```
+
+Add the validator. It must run **before** `StoreFieldsInto` — the existing `OnSave` already
+mutates `_settings` before some of its own early returns, and this task must not add to that.
+
+```csharp
+    /// <summary>
+    /// Validates the endpoint fields for the selected provider, showing a message and
+    /// returning false if they cannot work. Only OpenAI-compatible providers have an
+    /// editable Base URL; Anthropic's is fixed by its SDK.
+    /// </summary>
+    private bool ValidateProviderFields()
+    {
+        var preset = ProviderPresets.Get(CurrentProviderId);
+
+        // Presets carry an example only where one exists: Custom has no Base URL, and
+        // neither Ollama nor Custom has a default model, because both depend entirely on
+        // what the user has actually pulled or deployed. Never render a bare "Example: ".
+        var urlHint = string.IsNullOrEmpty(preset.BaseUrl)
+            ? "" : $" Example: {preset.BaseUrl}";
+        var modelHint = string.IsNullOrEmpty(preset.DefaultModel)
+            ? "" : $" Example: {preset.DefaultModel}";
+
+        if (preset.IsOpenAiCompatible)
+        {
+            var baseUrl = BaseUrlBox.Text.Trim();
+            if (string.IsNullOrEmpty(baseUrl))
+            {
+                WpfMessageBox.Show(
+                    $"{preset.DisplayName} needs a Base URL.{urlHint}",
+                    "TextFix", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+
+            if (!Uri.TryCreate(baseUrl, UriKind.Absolute, out var uri) ||
+                (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                WpfMessageBox.Show(
+                    $"Base URL must be a full http:// or https:// address.{urlHint}",
+                    "TextFix", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return false;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(ModelBox.Text))
+        {
+            WpfMessageBox.Show(
+                $"Choose a model for {preset.DisplayName}.{modelHint}",
+                "TextFix", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        return true;
+    }
+```
+
+Notes for the implementer:
+
+- Do **not** try to validate reachability here — that is what the Test connection button is
+  for. A URL that is well-formed but down is a valid thing to save; a user can configure
+  Ollama before starting it.
+- The empty-example handling above is not optional polish. Verified in
+  `ProviderPresets.cs:12-29`: Anthropic and Custom both have `BaseUrl: ""`, and Ollama and
+  Custom both have `DefaultModel: ""`. A naive `$"Example: {preset.BaseUrl}"` renders a
+  dangling "Example: " on exactly the provider — Custom — whose users most need the hint.
+- The URL branch is guarded by `IsOpenAiCompatible` because Anthropic's endpoint is fixed
+  by its SDK and its Base URL field is hidden.
+- The existing file uses both `System.Windows.MessageBox` and the `WpfMessageBox` alias.
+  Use `WpfMessageBox`, matching the majority of `OnSave`.
+
+**This validator is the one part of Task 9 that IS unit-testable-adjacent but is not being
+tested** — it reads WPF controls directly. Do not extract a testable helper just to have a
+test; note the gap in your report and move on. The manual checklist in Step 4 covers it.
 
 - [ ] **Step 4: Build and verify by hand**
 
@@ -2382,6 +2461,11 @@ Verify each of these in the Settings window:
 6. Selecting **OpenAI** shows the API key field again with your OpenAI key, if previously saved.
 7. Switch Anthropic → Ollama → Anthropic: the Claude model and key are still there.
 8. Save, reopen Settings: everything persisted.
+9. Select **Custom**, leave Base URL empty, press Save: a warning names the missing Base
+   URL and the dialog stays open. No dangling "Example: " in the message.
+10. Set Base URL to `localhost:11434` (no scheme) and Save: the http/https warning fires.
+    `http://localhost:11434/v1` saves cleanly.
+11. Clear the Model field on any provider and Save: the model warning fires.
 
 - [ ] **Step 5: Commit**
 
