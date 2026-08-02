@@ -90,6 +90,18 @@ public class ProviderFactoryTests
     }
 
     [Fact]
+    public void Create_ReturnsNewInstance_AfterInvalidate_EvenWhenConfigUnchanged()
+    {
+        var settings = new AppSettings { ActiveProviderId = ProviderPresets.OllamaId };
+        var factory = new ProviderFactory(settings);
+        var first = factory.Create();
+
+        factory.Invalidate();
+
+        Assert.NotSame(first, factory.Create());
+    }
+
+    [Fact]
     public void Create_UnknownProviderId_FallsBackToAnthropic()
     {
         // Note the key goes on the *anthropic* config, not "bogus": Get("bogus")

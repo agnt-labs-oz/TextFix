@@ -41,6 +41,7 @@ public partial class App : Application
     private ToolStripMenuItem? _historyMenu;
     private HotkeyListener? _hotkeyListener;
     private CorrectionService? _correctionService;
+    private ProviderFactory? _providerFactory;
     private IAiProvider? _aiClient;
     private ClipboardManager? _clipboardManager;
     private FocusTracker? _focusTracker;
@@ -253,6 +254,24 @@ public partial class App : Application
         _overlay?.SetActiveMode(modeName);
     }
 
+    /// <summary>
+    /// Switches the active provider and persists it. Takes effect on the next
+    /// correction — it deliberately does not re-run the result currently on screen.
+    /// </summary>
+    private async void SwitchProvider(string providerId)
+    {
+        _settings.ActiveProviderId = providerId;
+        RebuildServices();
+        try
+        {
+            await _settings.SaveAsync();
+        }
+        catch (Exception ex)
+        {
+            LogError(ex);
+        }
+    }
+
     private void RefreshHistoryMenu()
     {
         if (_historyMenu is null || _correctionService is null) return;
@@ -366,12 +385,12 @@ public partial class App : Application
 
         try
         {
-            if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+            if (_aiClient is null)
             {
+                var preset = ProviderPresets.Get(_settings.ActiveProviderId);
                 _overlay?.ShowProcessing(_settings.ActiveModeName);
-                _overlay?.ShowResult(
-                    CorrectionResult.Error("", "Set up your API key in Settings."),
-                    0);
+                _overlay?.ShowResult(CorrectionResult.Error("",
+                    $"{preset.DisplayName} needs an API key. Add one in Settings."), 0);
                 return;
             }
 
@@ -394,10 +413,12 @@ public partial class App : Application
         if (Interlocked.CompareExchange(ref _isBusy, 1, 0) != 0) return;
         try
         {
-            if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+            if (_aiClient is null)
             {
+                var preset = ProviderPresets.Get(_settings.ActiveProviderId);
                 _overlay?.ShowProcessing(_settings.ActiveModeName);
-                _overlay?.ShowResult(CorrectionResult.Error(text, "Set up your API key in Settings."), 0);
+                _overlay?.ShowResult(CorrectionResult.Error(text,
+                    $"{preset.DisplayName} needs an API key. Add one in Settings."), 0);
                 return;
             }
             await _correctionService!.ReapplyAsync(text);
@@ -419,8 +440,8 @@ public partial class App : Application
         _clipboardManager = new ClipboardManager();
         _focusTracker = new FocusTracker();
 
-        if (!string.IsNullOrWhiteSpace(_settings.GetApiKey()))
-            _aiClient = new AnthropicProvider(_settings.GetApiKey(), _settings.Model, timeoutSeconds: 10);
+        _providerFactory = new ProviderFactory(_settings);
+        _aiClient = _providerFactory.Create();
 
         var history = await CorrectionHistory.LoadAsync(maxItems: _settings.HistoryMaxItems);
         _statsTracker = new StatsTracker(StatsTracker.DefaultPath);
@@ -453,10 +474,10 @@ public partial class App : Application
 
     private void RebuildServices()
     {
-        _aiClient = !string.IsNullOrWhiteSpace(_settings.GetApiKey())
-            ? new AnthropicProvider(_settings.GetApiKey(), _settings.Model, timeoutSeconds: 10)
-            : null;
-        _correctionService?.UpdateProvider(_aiClient!);
+        _providerFactory?.Invalidate();
+        _aiClient = _providerFactory?.Create();
+        if (_aiClient is not null)
+            _correctionService?.UpdateProvider(_aiClient);
     }
 
     private void RegisterHotkey()
@@ -488,13 +509,13 @@ public partial class App : Application
 
         try
         {
-            if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+            if (_aiClient is null)
             {
-                LogDebug("No API key configured");
+                var preset = ProviderPresets.Get(_settings.ActiveProviderId);
+                LogDebug($"No API key configured for {preset.DisplayName}");
                 _overlay?.ShowProcessing(_settings.ActiveModeName);
-                _overlay?.ShowResult(
-                    CorrectionResult.Error("", "Set up your API key in Settings."),
-                    0);
+                _overlay?.ShowResult(CorrectionResult.Error("",
+                    $"{preset.DisplayName} needs an API key. Add one in Settings."), 0);
                 return;
             }
 
