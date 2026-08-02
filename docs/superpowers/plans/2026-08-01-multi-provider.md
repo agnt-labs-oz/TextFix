@@ -2067,9 +2067,28 @@ Add to `App.xaml.cs`, next to the existing mode-switching code:
 
 Nothing calls `SwitchProvider` yet — Task 10 adds the overlay and tray callers, and adds the `RefreshProviderMenu()` call to this method at the same time. Do **not** add an empty `RefreshProviderMenu` stub here; an empty method with no caller is dead code, and Task 10 defines it properly.
 
-- [ ] **Step 3: Handle the no-provider case on hotkey press**
+- [ ] **Step 3: Replace the legacy key guards with a provider-aware guard**
 
-Find where `OnHotkeyPressed` handles a null `_aiClient` and make the message provider-aware, so a user with Ollama selected is not told to check an API key:
+**AMENDED 2026-08-03 (controller).** The original step said "find where `OnHotkeyPressed`
+handles a null `_aiClient`". No such check exists. There are **three** guard sites and every
+one of them tests the legacy top-level Anthropic key, not the active provider:
+
+- `OnRetryRequested` — `App.xaml.cs:369`
+- `OnReapplyRequested` — `App.xaml.cs:397`
+- `OnHotkeyPressed` — `App.xaml.cs:491`
+
+```csharp
+    if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+```
+
+Left as-is this defeats the whole feature: a user who selects Ollama and has never entered
+an Anthropic key is blocked at every entry point with "Set up your API key in Settings."
+No correction can run. **All three sites must be converted**, not just the hotkey one.
+
+Replace each guard's condition with a null-provider check and a provider-aware message.
+`ProviderFactory.Create()` returns null only when the preset's `Key` is
+`KeyRequirement.Required` and no key is configured, so this message is unreachable for
+Ollama and for a keyless Custom endpoint — which is exactly the point.
 
 ```csharp
         if (_aiClient is null)
@@ -2081,6 +2100,14 @@ Find where `OnHotkeyPressed` handles a null `_aiClient` and make the message pro
             return;
         }
 ```
+
+`OnReapplyRequested` passes the pending `text` into `CorrectionResult.Error(text, ...)`
+rather than `""` — preserve that difference; it keeps the user's text recoverable.
+`OnHotkeyPressed` also emits `LogDebug("No API key configured")`; update that message to
+name the provider, since it will now fire for OpenAI too.
+
+The two generic catch-block messages ("check your API key in Settings", `App.xaml.cs:384`,
+`:410`, `:510`) are out of scope for this task — they are catch-all wording, not guards.
 
 - [ ] **Step 4: Build, test, verify by hand**
 
