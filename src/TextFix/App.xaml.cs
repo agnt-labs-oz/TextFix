@@ -102,10 +102,17 @@ public partial class App : Application
         _updateService = new UpdateService();
         _ = CheckForUpdatesSilentAsync();
 
-        // Prompt for API key on first run; otherwise show a brief tray balloon so the user
+        // Prompt for setup on first run; otherwise show a brief tray balloon so the user
         // knows the app launched (without that, a normal start has zero visible feedback —
         // just an icon appearing in the system tray that's easy to miss).
-        if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+        //
+        // Gate on the active provider, not on the legacy top-level key. Settings now writes
+        // credentials per provider and no longer touches AppSettings.ApiKey at all, so a
+        // legacy-key check would trap an Ollama user in this dialog on every launch: they
+        // have no API key, they need none, and nothing they can do in Settings would ever
+        // satisfy it. _aiClient is null exactly when the chosen provider requires a key and
+        // hasn't got one — which is the real "not set up yet" condition.
+        if (_aiClient is null)
         {
             OpenSettings();
         }
