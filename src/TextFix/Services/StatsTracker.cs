@@ -38,7 +38,7 @@ public sealed class StatsTracker
             CharsOut = result.CorrectedText.Length,
             TokensIn = result.InputTokens,
             TokensOut = result.OutputTokens,
-            CostEstimate = CostEstimator.Estimate(result.Model, result.InputTokens, result.OutputTokens),
+            CostEstimate = CostEstimator.Estimate(result.Model, result.InputTokens, result.OutputTokens, result.IsLocal),
             Status = "success",
         };
 

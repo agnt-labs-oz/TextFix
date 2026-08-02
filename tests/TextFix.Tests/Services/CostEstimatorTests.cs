@@ -32,4 +32,38 @@ public class CostEstimatorTests
     {
         Assert.Equal(0m, CostEstimator.Estimate("claude-haiku-4-5-20251001", 0, 0));
     }
+
+    [Fact]
+    public void Estimate_LocalModel_IsAlwaysFree()
+    {
+        // Local inference costs nothing. Without this, the mid-range fallback would
+        // bill an Ollama run at Claude Sonnet rates.
+        var cost = CostEstimator.Estimate("llama3.2:3b", 1_000_000, 1_000_000, isLocal: true);
+        Assert.Equal(0m, cost);
+    }
+
+    [Fact]
+    public void Estimate_LocalFlagBeatsKnownModelName()
+    {
+        // A local server can serve a model whose name collides with a cloud one.
+        var cost = CostEstimator.Estimate("claude-opus-4-6", 1_000_000, 1_000_000, isLocal: true);
+        Assert.Equal(0m, cost);
+    }
+
+    [Fact]
+    public void Estimate_KnownOpenAiModel_UsesItsOwnRate()
+    {
+        // Must not fall back to the Sonnet mid-range rate.
+        var cost = CostEstimator.Estimate("gpt-4o-mini", 1_000_000, 1_000_000, isLocal: false);
+        Assert.True(cost > 0m);
+        Assert.True(cost < 18.0m, "gpt-4o-mini must not be priced at the Sonnet fallback rate");
+    }
+
+    [Fact]
+    public void Estimate_ThreeArgOverload_StillDefaultsToRemote()
+    {
+        Assert.Equal(
+            CostEstimator.Estimate("claude-haiku-4-5-20251001", 1000, 1000, isLocal: false),
+            CostEstimator.Estimate("claude-haiku-4-5-20251001", 1000, 1000));
+    }
 }
