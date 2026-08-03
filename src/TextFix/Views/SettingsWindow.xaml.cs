@@ -360,6 +360,16 @@ public partial class SettingsWindow : Window
         var preset = ProviderPresets.Get(CurrentProviderId);
         var config = _settings.GetProviderConfig(preset.Id);
 
+        // Say what to do rather than letting an empty URL fall through to SendAsync, where
+        // it surfaces as a UriFormatException the user cannot act on. Custom is the provider
+        // that ships with no default Base URL, so it is the one that lands here.
+        if (string.IsNullOrWhiteSpace(config.BaseUrl))
+        {
+            ConnectionStatusText.Foreground = System.Windows.Media.Brushes.Goldenrod;
+            ConnectionStatusText.Text = "Enter a Base URL first.";
+            return null;
+        }
+
         try
         {
             var provider = new OpenAiCompatibleProvider(

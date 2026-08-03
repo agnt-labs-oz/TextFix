@@ -39,12 +39,24 @@
             <Setter Property="Height" Value="32"/>
             <Setter Property="Template">
                 <Setter.Value>
+                    <!--
+                        A ComboBox with IsEditable="True" gets its text surface from a
+                        template part that MUST be named PART_EditableTextBox — WPF looks it
+                        up by that exact name. A custom template without it does not fail
+                        loudly; the control silently degrades to selection-only, so typing
+                        does nothing. That matters here because the model list for Ollama and
+                        Custom starts empty and can only be populated by reaching a live
+                        endpoint, so typing is the only way to configure one that is offline.
+                        Declared AFTER the ToggleButton so it sits above it in z-order and
+                        wins the click; its right margin leaves the arrow area to the button.
+                    -->
                     <ControlTemplate TargetType="ComboBox">
                         <Grid>
                             <ToggleButton Template="{StaticResource DarkComboBoxToggle}"
                                           IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
                                           Focusable="False" ClickMode="Press"/>
-                            <ContentPresenter IsHitTestVisible="False"
+                            <ContentPresenter x:Name="SelectionSite"
+                                              IsHitTestVisible="False"
                                               Content="{TemplateBinding SelectionBoxItem}"
                                               ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
                                               Margin="8,0,28,0"
@@ -56,6 +68,17 @@
                                     </Style>
                                 </ContentPresenter.Resources>
                             </ContentPresenter>
+                            <TextBox x:Name="PART_EditableTextBox"
+                                     Visibility="Collapsed"
+                                     Background="Transparent"
+                                     Foreground="#E0E0E0"
+                                     CaretBrush="#E0E0E0"
+                                     SelectionBrush="#6C63FF"
+                                     BorderThickness="0"
+                                     Margin="6,0,28,0"
+                                     Padding="0"
+                                     VerticalContentAlignment="Center"
+                                     IsReadOnly="{TemplateBinding IsReadOnly}"/>
                             <Popup IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Bottom"
                                    Focusable="False" AllowsTransparency="True" PopupAnimation="Slide">
                                 <Border Background="#2D2D3F" BorderBrush="#555" BorderThickness="1"
@@ -68,6 +91,13 @@
                                 </Border>
                             </Popup>
                         </Grid>
+                        <ControlTemplate.Triggers>
+                            <!-- Exactly one of the two surfaces is ever visible. -->
+                            <Trigger Property="IsEditable" Value="True">
+                                <Setter TargetName="PART_EditableTextBox" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="SelectionSite" Property="Visibility" Value="Collapsed"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
                     </ControlTemplate>
                 </Setter.Value>
             </Setter>
