@@ -34,6 +34,8 @@ public partial class OverlayWindow : Window
     private DateTime _processingStartedAt;
     private string _processingProviderLabel = "";
     private int _processingTimeoutSeconds;
+    /// <summary>The "Refining with X..." text the inline tick re-renders the timing onto.</summary>
+    private string _processingStatusLabel = "";
 
     // Persisted across sessions so user-resized result windows stay that size and place.
     private double _resultPrefWidth = 640;
@@ -74,8 +76,18 @@ public partial class OverlayWindow : Window
             // Showing the budget alongside the elapsed time is what turns a long
             // local cold start from "hung" into "working, and here's the deadline".
             var budget = _processingTimeoutSeconds > 0 ? $" / {_processingTimeoutSeconds}s" : "";
-            ProcessingDetailText.Text =
-                $"{_processingProviderLabel}   {elapsed.TotalSeconds:0.0}s{budget}";
+            var timing = $"{elapsed.TotalSeconds:0.0}s{budget}";
+
+            // Two different surfaces, because the overlay has two processing looks. The
+            // fresh pill shows ProcessingPanel; an inline Redo/Refine keeps the result
+            // on screen and shows only the header spinner, with ProcessingPanel still
+            // collapsed. Writing to ProcessingDetailText in that case would tick away
+            // invisibly — and a refine against a cold local model is exactly when the
+            // user most needs to see that something is still happening.
+            if (_processingInline)
+                StatusText.Text = $"{_processingStatusLabel}   {timing}";
+            else
+                ProcessingDetailText.Text = $"{_processingProviderLabel}   {timing}";
         };
     }
 
@@ -171,6 +183,7 @@ public partial class OverlayWindow : Window
 
             InlineSpinner.Visibility = Visibility.Visible;
             StatusIcon.Visibility = Visibility.Collapsed;
+            _processingStatusLabel = inlineLabel;
             StatusText.Text = inlineLabel;
             StatusText.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xE0, 0xE0, 0xE0));
             CountdownText.Visibility = Visibility.Collapsed;
