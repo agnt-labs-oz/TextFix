@@ -2608,22 +2608,30 @@ In `App.xaml.cs`, after the mode menu is added (line 211):
         _trayIcon.ContextMenuStrip.Items.Add(providerMenu);
 ```
 
+**AMENDED 2026-08-03 (controller).** The original version of `RefreshProviderMenu` located
+the submenu by matching `Text: "Provider"` — a string literal duplicated between the code
+that builds the menu and the code that walks it, so renaming the menu breaks the checkmarks
+silently. The codebase already solves this: `_historyMenu` is held as a field
+(`App.xaml.cs:41`) for exactly this reason. Follow that pattern instead.
+
+Declare the field next to `_historyMenu`:
+
+```csharp
+    private ToolStripMenuItem? _providerMenu;
+```
+
+and assign it in Step 5 (`var providerMenu = ...` becomes `_providerMenu = ...`, keeping a
+local alias if that reads better).
+
 Add `RefreshProviderMenu`, and add a call to it inside `SwitchProvider` (from Task 8) right after `RebuildServices()`:
 
 ```csharp
     private void RefreshProviderMenu()
     {
-        // ToolStripItemCollection is non-generic and not null-coalescible to [],
-        // so guard the whole walk rather than the collection expression.
-        var items = _trayIcon?.ContextMenuStrip?.Items;
-        if (items is not null)
+        if (_providerMenu is not null)
         {
-            foreach (ToolStripItem top in items)
-            {
-                if (top is not ToolStripMenuItem { Text: "Provider" } providerMenu) continue;
-                foreach (ToolStripMenuItem mi in providerMenu.DropDownItems)
-                    mi.Checked = (string?)mi.Tag == _settings.ActiveProviderId;
-            }
+            foreach (ToolStripMenuItem mi in _providerMenu.DropDownItems)
+                mi.Checked = (string?)mi.Tag == _settings.ActiveProviderId;
         }
 
         _overlay?.SetProviders(BuildProviderLabels(), _settings.ActiveProviderId);
