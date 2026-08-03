@@ -310,14 +310,17 @@ public partial class App : Application
         _overlay?.SetProviders(BuildProviderLabels(), _settings.ActiveProviderId);
     }
 
+    /// <summary>Provider name with its configured model, e.g. "Ollama (local) · llama3.2:3b".</summary>
+    private string ProviderLabel(ProviderPreset preset)
+    {
+        var config = _settings.GetProviderConfig(preset.Id);
+        var model = string.IsNullOrWhiteSpace(config.Model) ? preset.DefaultModel : config.Model;
+        return string.IsNullOrWhiteSpace(model) ? preset.DisplayName : $"{preset.DisplayName} · {model}";
+    }
+
     /// <summary>Provider names with their configured model, e.g. "Ollama · llama3.2:3b".</summary>
     private List<(string Id, string Label)> BuildProviderLabels() =>
-        ProviderPresets.All.Select(p =>
-        {
-            var config = _settings.GetProviderConfig(p.Id);
-            var model = string.IsNullOrWhiteSpace(config.Model) ? p.DefaultModel : config.Model;
-            return (p.Id, string.IsNullOrWhiteSpace(model) ? p.DisplayName : $"{p.DisplayName} · {model}");
-        }).ToList();
+        ProviderPresets.All.Select(p => (p.Id, ProviderLabel(p))).ToList();
 
     private void RefreshHistoryMenu()
     {
@@ -496,7 +499,12 @@ public partial class App : Application
         _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!, _settings, history);
 
         _correctionService.ProcessingStarted += () =>
-            Dispatcher.Invoke(() => _overlay?.ShowProcessing(_settings.ActiveModeName));
+            Dispatcher.Invoke(() =>
+            {
+                var preset = ProviderPresets.Get(_settings.ActiveProviderId);
+                _overlay?.ShowProcessing(
+                    _settings.ActiveModeName, ProviderLabel(preset), preset.TimeoutSeconds);
+            });
 
         _correctionService.CorrectionCompleted += result =>
             Dispatcher.Invoke(async () =>

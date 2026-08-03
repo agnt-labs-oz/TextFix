@@ -25,6 +25,16 @@ public partial class OverlayWindow : Window
     private bool _processingInline;
     private CorrectionHistory? _history;
 
+    // Drives ProcessingDetailText while the processing panel is visible — a long local
+    // cold start (Ollama) can take 30s+, and without a ticking counter that reads as a hang.
+    private readonly DispatcherTimer _elapsedTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(100),
+    };
+    private DateTime _processingStartedAt;
+    private string _processingProviderLabel = "";
+    private int _processingTimeoutSeconds;
+
     // Persisted across sessions so user-resized result windows stay that size and place.
     private double _resultPrefWidth = 640;
     private double _resultPrefHeight = 620;
@@ -57,6 +67,16 @@ public partial class OverlayWindow : Window
         // contract advertised in the action buttons and the Applied-state hint.
         PreviewKeyDown += OnKeyDown;
         PopulateModes();
+
+        _elapsedTimer.Tick += (_, _) =>
+        {
+            var elapsed = DateTime.UtcNow - _processingStartedAt;
+            // Showing the budget alongside the elapsed time is what turns a long
+            // local cold start from "hung" into "working, and here's the deadline".
+            var budget = _processingTimeoutSeconds > 0 ? $" / {_processingTimeoutSeconds}s" : "";
+            ProcessingDetailText.Text =
+                $"{_processingProviderLabel}   {elapsed.TotalSeconds:0.0}s{budget}";
+        };
     }
 
     private void PopulateModes(IReadOnlyList<CorrectionMode>? allModes = null)
@@ -127,10 +147,18 @@ public partial class OverlayWindow : Window
 
     public void SetHistory(CorrectionHistory history) => _history = history;
 
-    public void ShowProcessing(string modeLabel = "")
+    public void ShowProcessing(string modeLabel = "") => ShowProcessing(modeLabel, "", 0);
+
+    public void ShowProcessing(string modeName, string providerLabel, int timeoutSeconds)
     {
-        var freshLabel = string.IsNullOrEmpty(modeLabel) ? "Correcting..." : $"Correcting with {modeLabel}...";
-        var inlineLabel = string.IsNullOrEmpty(modeLabel) ? "Refining..." : $"Refining with {modeLabel}...";
+        _processingStartedAt = DateTime.UtcNow;
+        _processingProviderLabel = providerLabel;
+        _processingTimeoutSeconds = timeoutSeconds;
+        ProcessingDetailText.Text = providerLabel;
+        _elapsedTimer.Start();
+
+        var freshLabel = string.IsNullOrEmpty(modeName) ? "Correcting..." : $"Correcting with {modeName}...";
+        var inlineLabel = string.IsNullOrEmpty(modeName) ? "Refining..." : $"Refining with {modeName}...";
 
         // Inline mode: dialog is already visible with a result — keep it, show spinner in header
         if (IsVisible && ResultPanel.Visibility == Visibility.Visible)
@@ -277,6 +305,7 @@ public partial class OverlayWindow : Window
         if (_processingInline && result.IsError)
         {
             _processingInline = false;
+            StopElapsedTimer();
             _showingError = true;
             _showingApplied = false;
             StopInlineSpinner();
@@ -303,6 +332,7 @@ public partial class OverlayWindow : Window
         }
 
         _processingInline = false;
+        StopElapsedTimer();
         _currentResult = result;
         _showingIdle = false;
         _historyVisible = false;
@@ -395,6 +425,7 @@ public partial class OverlayWindow : Window
     public void ShowApplied()
     {
         _processingInline = false;
+        StopElapsedTimer();
         _showingError = false;
         _showingApplied = true;
         _showingIdle = false;
@@ -441,6 +472,7 @@ public partial class OverlayWindow : Window
         _showingApplied = false;
         _showingIdle = false;
         _processingInline = false;
+        StopElapsedTimer();
         StopInlineSpinner();
         Opacity = 1;
         ProcessingPanel.Visibility = Visibility.Collapsed;
@@ -566,6 +598,7 @@ public partial class OverlayWindow : Window
 
     public void FadeOutAndHide()
     {
+        StopElapsedTimer();
         var fadeOut = (Storyboard)FindResource("FadeOut");
         var clone = fadeOut.Clone();
         clone.Completed += (_, _) =>
@@ -778,6 +811,12 @@ public partial class OverlayWindow : Window
         CountdownText.Visibility = Visibility.Collapsed;
     }
 
+    /// <summary>
+    /// Ends the processing display. Must be called from every path that leaves the
+    /// processing state — a DispatcherTimer left running ticks forever on the UI thread.
+    /// </summary>
+    private void StopElapsedTimer() => _elapsedTimer.Stop();
+
     private Storyboard? _spinnerStoryboard;
 
     private void StartSpinnerAnimation()
@@ -834,6 +873,7 @@ public partial class OverlayWindow : Window
         _showingIdle = true;
         _history = history;
         StopAutoApply();
+        StopElapsedTimer();
         StopSpinnerAnimation();
         StopInlineSpinner();
         Opacity = 1;

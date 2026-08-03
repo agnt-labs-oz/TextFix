@@ -295,8 +295,12 @@
                             <RotateTransform CenterX="9" CenterY="9"/>
                         </Ellipse.RenderTransform>
                     </Ellipse>
-                    <TextBlock x:Name="ProcessingText" Text="Correcting..." Foreground="#E0E0E0"
-                               FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Vertical" VerticalAlignment="Center">
+                        <TextBlock x:Name="ProcessingText" Text="Correcting..." Foreground="#E0E0E0"
+                                   FontFamily="Segoe UI" FontSize="13"/>
+                        <TextBlock x:Name="ProcessingDetailText" Foreground="#666666"
+                                   FontFamily="Segoe UI" FontSize="10" Margin="0,4,0,0"/>
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- Result state: diff + buttons + mode selector -->
