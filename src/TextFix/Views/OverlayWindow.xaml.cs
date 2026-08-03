@@ -44,6 +44,7 @@ public partial class OverlayWindow : Window
     public event Action? RetryRequested;
     public event Action? CopyRequested;
     public event Action<string>? ModeChanged;
+    public event Action<string>? ProviderChanged;
     public event Action? OverlayHidden;
     public event Action<string>? ReapplyRequested;      // text to reapply
     public event Action<double, double, double, double>? BoundsChanged; // width, height, left, top
@@ -88,6 +89,40 @@ public partial class OverlayWindow : Window
             }
         }
         _suppressModeChange = false;
+    }
+
+    /// <summary>Fills the provider dropdown and selects the active one.</summary>
+    public void SetProviders(IReadOnlyList<(string Id, string Label)> providers, string activeId)
+    {
+        _suppressProviderEvent = true;
+        try
+        {
+            ProviderBox.Items.Clear();
+            foreach (var (id, label) in providers)
+                ProviderBox.Items.Add(new ComboBoxItem { Content = label, Tag = id });
+
+            for (var i = 0; i < ProviderBox.Items.Count; i++)
+            {
+                if (ProviderBox.Items[i] is ComboBoxItem item && (string)item.Tag == activeId)
+                {
+                    ProviderBox.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            _suppressProviderEvent = false;
+        }
+    }
+
+    private bool _suppressProviderEvent;
+
+    private void OnProviderChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressProviderEvent) return;
+        if (ProviderBox.SelectedItem is ComboBoxItem item)
+            ProviderChanged?.Invoke((string)item.Tag);
     }
 
     public void SetHistory(CorrectionHistory history) => _history = history;
@@ -233,6 +268,7 @@ public partial class OverlayWindow : Window
         CopyButton.IsEnabled = enabled;
         HistoryToggleButton.IsEnabled = enabled;
         ModeBox.IsEnabled = enabled;
+        ProviderBox.IsEnabled = enabled;
     }
 
     public void ShowResult(CorrectionResult result, int autoApplySeconds, bool editable = false)
@@ -344,6 +380,9 @@ public partial class OverlayWindow : Window
         // Word-level Removed + Added segment counts — accurate even when words shift.
         var changeCount = Math.Max(1, diff.Stats.RemovedWordCount + diff.Stats.AddedWordCount);
         StatusText.Text = $"Fixed {changeCount} error{(changeCount == 1 ? "" : "s")}";
+        ConversationalWarning.Visibility = result.LooksConversational
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         ApplyEditableState(editable);
 
         Activate();

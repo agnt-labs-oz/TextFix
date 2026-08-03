@@ -39,6 +39,7 @@ public partial class App : Application
     private static AppLog? _log;
     private NotifyIcon? _trayIcon;
     private ToolStripMenuItem? _historyMenu;
+    private ToolStripMenuItem? _providerMenu;
     private HotkeyListener? _hotkeyListener;
     private CorrectionService? _correctionService;
     private ProviderFactory? _providerFactory;
@@ -96,6 +97,7 @@ public partial class App : Application
         CreateHiddenWindow();
         SetupTrayIcon();
         SetupOverlay();
+        RefreshProviderMenu();
         await SetupServicesAsync();
         RegisterHotkey();
 
@@ -219,6 +221,23 @@ public partial class App : Application
         }
         _trayIcon.ContextMenuStrip.Items.Add(modeMenu);
 
+        // Provider submenu
+        _providerMenu = new ToolStripMenuItem("Provider");
+        foreach (var preset in ProviderPresets.All)
+        {
+            var item = new ToolStripMenuItem(preset.DisplayName)
+            {
+                Tag = preset.Id,
+                Checked = preset.Id == _settings.ActiveProviderId,
+            };
+            item.Click += (s, _) =>
+            {
+                if (s is ToolStripMenuItem mi && mi.Tag is string id) SwitchProvider(id);
+            };
+            _providerMenu.DropDownItems.Add(item);
+        }
+        _trayIcon.ContextMenuStrip.Items.Add(_providerMenu);
+
         // History submenu
         _historyMenu = new ToolStripMenuItem("History") { Enabled = false };
         _trayIcon.ContextMenuStrip.Items.Add(_historyMenu);
@@ -269,6 +288,7 @@ public partial class App : Application
     {
         _settings.ActiveProviderId = providerId;
         RebuildServices();
+        RefreshProviderMenu();
         try
         {
             await _settings.SaveAsync();
@@ -278,6 +298,26 @@ public partial class App : Application
             LogError(ex);
         }
     }
+
+    private void RefreshProviderMenu()
+    {
+        if (_providerMenu is not null)
+        {
+            foreach (ToolStripMenuItem mi in _providerMenu.DropDownItems)
+                mi.Checked = (string?)mi.Tag == _settings.ActiveProviderId;
+        }
+
+        _overlay?.SetProviders(BuildProviderLabels(), _settings.ActiveProviderId);
+    }
+
+    /// <summary>Provider names with their configured model, e.g. "Ollama · llama3.2:3b".</summary>
+    private List<(string Id, string Label)> BuildProviderLabels() =>
+        ProviderPresets.All.Select(p =>
+        {
+            var config = _settings.GetProviderConfig(p.Id);
+            var model = string.IsNullOrWhiteSpace(config.Model) ? p.DefaultModel : config.Model;
+            return (p.Id, string.IsNullOrWhiteSpace(model) ? p.DisplayName : $"{p.DisplayName} · {model}");
+        }).ToList();
 
     private void RefreshHistoryMenu()
     {
@@ -315,6 +355,7 @@ public partial class App : Application
         _overlay.UserResponded += OnUserResponded;
         _overlay.RetryRequested += OnRetryRequested;
         _overlay.ModeChanged += OnOverlayModeChanged;
+        _overlay.ProviderChanged += SwitchProvider;
         _overlay.OverlayHidden += OnOverlayHidden;
         _overlay.CopyRequested += OnCopyRequested;
         _overlay.ReapplyRequested += OnReapplyRequested;
@@ -460,8 +501,10 @@ public partial class App : Application
         _correctionService.CorrectionCompleted += result =>
             Dispatcher.Invoke(async () =>
             {
-                var autoApply = _settings.ManualApplyOnly ? 0 : _settings.OverlayAutoApplySeconds;
-                _overlay?.ShowResult(result, autoApply, _settings.ManualApplyOnly);
+                var autoApply = _settings.ManualApplyOnly || result.LooksConversational
+                    ? 0
+                    : _settings.OverlayAutoApplySeconds;
+                _overlay?.ShowResult(result, autoApply, _settings.ManualApplyOnly || result.LooksConversational);
                 RefreshHistoryMenu();
                 await _correctionService.History.SaveAsync();
                 if (_statsTracker is not null)
