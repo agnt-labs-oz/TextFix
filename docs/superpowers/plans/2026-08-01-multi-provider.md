@@ -2742,31 +2742,84 @@ Change `ShowProcessing` to take the extra arguments and start the timer, keeping
     }
 ```
 
-Stop the timer wherever the processing state ends — in `ShowResult`, the error path, and `FadeOutAndHide`:
+**AMENDED 2026-08-03 (controller).** "in `ShowResult`, the error path, and `FadeOutAndHide`"
+is not the full set. A `DispatcherTimer` that is started but never stopped keeps firing on the
+UI thread for the life of the process, rewriting a `TextBlock` nobody is looking at. Every
+exit from the processing state must stop it.
+
+The reliable marker is `_processingInline = false` — the overlay already clears that flag at
+each exit. Add a single helper and call it at **every** one:
 
 ```csharp
-        _elapsedTimer.Stop();
+    /// <summary>
+    /// Ends the processing display. Must be called from every path that leaves the
+    /// processing state — a DispatcherTimer left running ticks forever on the UI thread.
+    /// </summary>
+    private void StopElapsedTimer() => _elapsedTimer.Stop();
 ```
+
+Verified call sites in `OverlayWindow.xaml.cs` as of this amendment:
+
+- `ShowResult` — the inline-error branch (`_processingInline = false` at ~:279) **and** the
+  normal path (~:305). Both, not just one.
+- `ShowApplied` (~:397)
+- `ShowFocusLost` (~:443) — missing from the original step
+- `ShowIdle` (~:830) — missing from the original step
+- `FadeOutAndHide` (~:567)
+
+Line numbers will have shifted by the time you edit; find them by the `_processingInline = false`
+assignments rather than trusting the numbers. Confirm in your report that you covered every
+one, and say how many you found — if it is not five sites plus `FadeOutAndHide`, say so.
 
 Note the existing rule in CLAUDE.md: `FadeOutAndHide()` animates and calls `Hide()` itself. Do not add a separate `Hide()` call here.
 
+**Keep the existing default parameter** when adding the overload:
+
+```csharp
+    public void ShowProcessing(string modeLabel = "") => ShowProcessing(modeLabel, "", 0);
+```
+
+The current signature is `ShowProcessing(string modeLabel = "")`. Replacing it with a
+non-defaulted `ShowProcessing(string)` would silently break any zero-argument call. There
+are none today (all eight call sites pass one argument, all in `App.xaml.cs`), but keeping
+the default costs nothing and removes the trap.
+
 - [ ] **Step 3: Pass the provider label from App**
 
-In `App.xaml.cs`, in the `ProcessingStarted` handler:
+**AMENDED 2026-08-03 (controller).** The original snippet rebuilt the "Anthropic · model"
+label inline, duplicating logic Task 10 already shipped as `BuildProviderLabels()`
+(`App.xaml.cs`). Two copies of a display-format rule drift apart. Extract the single-provider
+case and have both callers use it.
+
+Replace Task 10's `BuildProviderLabels` body so it delegates:
+
+```csharp
+    /// <summary>Provider name with its configured model, e.g. "Ollama (local) · llama3.2:3b".</summary>
+    private string ProviderLabel(ProviderPreset preset)
+    {
+        var config = _settings.GetProviderConfig(preset.Id);
+        var model = string.IsNullOrWhiteSpace(config.Model) ? preset.DefaultModel : config.Model;
+        return string.IsNullOrWhiteSpace(model) ? preset.DisplayName : $"{preset.DisplayName} · {model}";
+    }
+
+    private List<(string Id, string Label)> BuildProviderLabels() =>
+        ProviderPresets.All.Select(p => (p.Id, ProviderLabel(p))).ToList();
+```
+
+Then in the `ProcessingStarted` handler:
 
 ```csharp
         _correctionService.ProcessingStarted += () =>
             Dispatcher.Invoke(() =>
             {
                 var preset = ProviderPresets.Get(_settings.ActiveProviderId);
-                var config = _settings.GetProviderConfig(preset.Id);
-                var model = string.IsNullOrWhiteSpace(config.Model) ? preset.DefaultModel : config.Model;
-                var label = string.IsNullOrWhiteSpace(model)
-                    ? preset.DisplayName
-                    : $"{preset.DisplayName} · {model}";
-                _overlay?.ShowProcessing(_settings.ActiveModeName, label, preset.TimeoutSeconds);
+                _overlay?.ShowProcessing(
+                    _settings.ActiveModeName, ProviderLabel(preset), preset.TimeoutSeconds);
             });
 ```
+
+`BuildProviderLabels`' behaviour must not change — Task 10's review confirmed it cannot emit
+a trailing `" · "` for Ollama or Custom, both of which have `DefaultModel: ""`. Preserve that.
 
 - [ ] **Step 4: Build and verify by hand**
 
