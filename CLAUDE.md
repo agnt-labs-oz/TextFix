@@ -43,7 +43,8 @@ App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event r
 ├── Services/DiffEngine.cs         — Word-level Myers/LCS over whitespace-preserving tokens
 ├── Services/CostEstimator.cs      — Per-model USD rates; local inference short-circuits to zero
 ├── Services/StatsTracker.cs       — Append-only JSONL aggregates behind the About window
-├── Services/AppLog.cs             — Daily-rolling log, 7-day retention, redacts correction text
+├── Services/AppLog.cs             — Daily-rolling log, 7-day retention. Formats exceptions by
+│                                    hand rather than ToString(), which can leak auth headers
 ├── Services/StartupRegistration.cs — HKCU\…\Run entry for launch-on-login
 ├── Services/UpdateService.cs      — Velopack check/download, applied on exit
 ├── Views/OverlayWindow.xaml       — Floating overlay (processing → diff → error → applied states)
