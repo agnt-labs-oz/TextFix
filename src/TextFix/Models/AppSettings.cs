@@ -65,8 +65,15 @@ public class AppSettings
         return created;
     }
 
+    /// <summary>
+    /// The config the active provider actually uses. Resolves through
+    /// <see cref="ProviderPresets.Get"/> exactly as <c>ProviderFactory.Create</c> does —
+    /// a hand-edited ActiveProviderId of "groq" must land on the Anthropic config that
+    /// corrections really run from, not create and persist a stray "groq" entry.
+    /// </summary>
     [JsonIgnore]
-    public ProviderConfig ActiveProvider => GetProviderConfig(ActiveProviderId);
+    public ProviderConfig ActiveProvider =>
+        GetProviderConfig(ProviderPresets.Get(ActiveProviderId).Id);
 
     // Persisted overlay bounds for the result/diff view. null = unset (use defaults / position near cursor).
     public double? OverlayWidth { get; set; }

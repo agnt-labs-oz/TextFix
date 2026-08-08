@@ -133,6 +133,11 @@ public partial class OverlayWindow : Window
             foreach (var (id, label) in providers)
                 ProviderBox.Items.Add(new ComboBoxItem { Content = label, Tag = id });
 
+            // Fall back to the first entry rather than leaving SelectedIndex at -1. An
+            // unrecognised activeId — a hand-edited settings file — otherwise renders an
+            // empty "Via:" while corrections silently run against the Anthropic fallback
+            // that ProviderPresets.Get resolves to.
+            ProviderBox.SelectedIndex = 0;
             for (var i = 0; i < ProviderBox.Items.Count; i++)
             {
                 if (ProviderBox.Items[i] is ComboBoxItem item && (string)item.Tag == activeId)

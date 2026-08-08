@@ -59,9 +59,11 @@ public class ProviderFactory(AppSettings settings)
             $"{preset.Id}{separator}{config.BaseUrl}{separator}{config.Model}{separator}{apiKey}")));
         if (_cached is not null && _cacheKey == key) return _cached;
 
+        // Hand over the resolved values, so what was validated above is exactly what gets
+        // built. The providers resolve too, so this is belt-and-braces rather than load-bearing.
         _cached = preset.IsOpenAiCompatible
-            ? new OpenAiCompatibleProvider(preset, config.BaseUrl, config.Model, apiKey)
-            : new AnthropicProvider(apiKey, config.Model, preset.TimeoutSeconds);
+            ? new OpenAiCompatibleProvider(preset, effectiveUrl, effectiveModel, apiKey)
+            : new AnthropicProvider(apiKey, effectiveModel, preset.TimeoutSeconds);
         _cacheKey = key;
         return _cached;
     }

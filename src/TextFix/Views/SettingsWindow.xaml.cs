@@ -268,11 +268,23 @@ public partial class SettingsWindow : Window
     }
 
     /// <summary>Persists whatever is in the fields to the config for <paramref name="id"/>.</summary>
+    /// <remarks>
+    /// Values equal to the preset's are stored as "" rather than as literals. LoadFieldsFrom
+    /// resolves "" to the preset for display, so writing the resolved value straight back
+    /// would pin it on the first Settings visit and a later preset change — a new default
+    /// model, a moved endpoint — would never reach existing users.
+    /// </remarks>
     private void StoreFieldsInto(string id)
     {
+        var preset = ProviderPresets.Get(id);
         var config = _settings.GetProviderConfig(id);
-        config.BaseUrl = BaseUrlBox.Text.Trim();
-        config.Model = (ModelBox.Text ?? "").Trim();
+
+        var baseUrl = BaseUrlBox.Text.Trim();
+        config.BaseUrl = baseUrl == preset.BaseUrl ? "" : baseUrl;
+
+        var model = (ModelBox.Text ?? "").Trim();
+        config.Model = model == preset.DefaultModel ? "" : model;
+
         var key = _keyVisible ? ApiKeyTextBox.Text.Trim() : ApiKeyBox.Password.Trim();
         config.SetApiKey(key);
     }
@@ -326,29 +338,57 @@ public partial class SettingsWindow : Window
         LoadFieldsFrom(_loadedProviderId);
     }
 
+    /// <summary>
+    /// Disables both network buttons for the duration of a lookup. Listing models can take
+    /// many seconds against a cold local endpoint, and these are async void handlers with no
+    /// natural re-entrancy guard — without this a user can queue several and whichever
+    /// returns last wins the status line, which may not be the one they last clicked.
+    /// </summary>
+    private void SetNetworkButtonsEnabled(bool enabled)
+    {
+        RefreshModelsButton.IsEnabled = enabled;
+        TestConnectionButton.IsEnabled = enabled;
+    }
+
     private async void OnRefreshModels(object sender, RoutedEventArgs e)
     {
         StoreFieldsInto(CurrentProviderId);
-        var models = await TryListModelsAsync();
-        if (models is null) return;
+        SetNetworkButtonsEnabled(false);
+        try
+        {
+            var models = await TryListModelsAsync();
+            if (models is null) return;
 
-        var current = ModelBox.Text;
-        ModelBox.Items.Clear();
-        foreach (var m in models) ModelBox.Items.Add(m);
-        ModelBox.Text = models.Contains(current) ? current : models.FirstOrDefault() ?? "";
+            var current = ModelBox.Text;
+            ModelBox.Items.Clear();
+            foreach (var m in models) ModelBox.Items.Add(m);
+            ModelBox.Text = models.Contains(current) ? current : models.FirstOrDefault() ?? "";
+        }
+        finally
+        {
+            SetNetworkButtonsEnabled(true);
+        }
     }
 
     private async void OnTestConnection(object sender, RoutedEventArgs e)
     {
         StoreFieldsInto(CurrentProviderId);
-        ConnectionStatusText.Foreground = System.Windows.Media.Brushes.Gray;
-        ConnectionStatusText.Text = "Testing…";
+        SetNetworkButtonsEnabled(false);
+        try
+        {
+            ConnectionStatusText.Foreground = System.Windows.Media.Brushes.Gray;
+            ConnectionStatusText.Text = "Testing…";
 
-        var models = await TryListModelsAsync();
-        if (models is null) return;
+            var models = await TryListModelsAsync();
+            if (models is null) return;
 
-        ConnectionStatusText.Foreground = System.Windows.Media.Brushes.MediumSeaGreen;
-        ConnectionStatusText.Text = $"Connected — {models.Count} model{(models.Count == 1 ? "" : "s")}";
+            ConnectionStatusText.Foreground = System.Windows.Media.Brushes.MediumSeaGreen;
+            ConnectionStatusText.Text = $"Connected — {models.Count} model{(models.Count == 1 ? "" : "s")}";
+        }
+        finally
+        {
+            SetNetworkButtonsEnabled(true);
+        }
     }
 
     /// <summary>
@@ -360,10 +400,15 @@ public partial class SettingsWindow : Window
         var preset = ProviderPresets.Get(CurrentProviderId);
         var config = _settings.GetProviderConfig(preset.Id);
 
+        // Resolve through the preset, exactly as the provider does. A stored "" means
+        // "use the preset's" — not "blank" — so testing the raw field here would wrongly
+        // reject Ollama, whose configured URL is normally left at the preset default.
+        var effectiveUrl = string.IsNullOrWhiteSpace(config.BaseUrl) ? preset.BaseUrl : config.BaseUrl;
+
         // Say what to do rather than letting an empty URL fall through to SendAsync, where
         // it surfaces as a UriFormatException the user cannot act on. Custom is the provider
         // that ships with no default Base URL, so it is the one that lands here.
-        if (string.IsNullOrWhiteSpace(config.BaseUrl))
+        if (string.IsNullOrWhiteSpace(effectiveUrl))
         {
             ConnectionStatusText.Foreground = System.Windows.Media.Brushes.Goldenrod;
             ConnectionStatusText.Text = "Enter a Base URL first.";
@@ -373,7 +418,7 @@ public partial class SettingsWindow : Window
         try
         {
             var provider = new OpenAiCompatibleProvider(
-                preset, config.BaseUrl, config.Model, config.GetApiKey());
+                preset, effectiveUrl, config.Model, config.GetApiKey());
             var models = await provider.ListModelsAsync();
             if (models.Count == 0)
             {
@@ -388,7 +433,7 @@ public partial class SettingsWindow : Window
         catch (Exception ex)
         {
             ConnectionStatusText.Foreground = System.Windows.Media.Brushes.IndianRed;
-            var url = string.IsNullOrWhiteSpace(config.BaseUrl) ? preset.BaseUrl : config.BaseUrl;
+            var url = effectiveUrl;
             ConnectionStatusText.Text = preset.Id == ProviderPresets.OllamaId
                 ? $"Cannot reach {url} — is Ollama running? Install it from ollama.com"
                 : $"Cannot reach {url} — {ex.Message}";
