@@ -4,19 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-TextFix is a Windows desktop application that lets users quickly correct and improve typed text using AI. The core workflow: user types text in any app (Teams, editors, console, etc.), selects it, triggers TextFix via hotkey (default Ctrl+Shift+Z), and the app grabs the selected text, sends it to Claude for correction, and replaces the original text with the corrected version.
+TextFix is a Windows desktop application that lets users quickly correct and improve typed text using AI. The core workflow: user types text in any app (Teams, editors, console, etc.), selects it, triggers TextFix via hotkey (default Ctrl+Shift+Z), and the app grabs the selected text, sends it to the configured AI provider for correction, and replaces the original text with the corrected version.
 
-### Current State (v0.2)
-Hotkey-triggered select-correct-replace with floating interactive overlay, six correction modes switchable from overlay or tray, correction history, auto-apply countdown, pin-open toggle.
+### Current State
+Hotkey-triggered select-correct-replace with a floating interactive overlay, six correction modes switchable from overlay or tray, correction history, auto-apply countdown, pin-open toggle.
+
+Text can be corrected by Anthropic, a local Ollama model, OpenAI, or any OpenAI-compatible endpoint (LM Studio, llama.cpp, OpenRouter, Groq, a corporate gateway). The provider is switchable from the overlay's "Via" dropdown and the tray menu, and each provider keeps its own base URL, model and API key.
 
 ### Future
-Multiple AI providers, custom user-defined modes, real-time auto-correction, start-with-Windows.
+Custom user-defined modes, real-time auto-correction, streaming responses, an in-app Ollama setup helper.
 
 ## Tech Stack
 
 - **.NET 10** with WPF + WinForms (for NotifyIcon), targeting `net10.0-windows`
 - **C#** with `AllowUnsafeBlocks` (required for LibraryImport source-generated P/Invoke)
 - **Anthropic C# SDK** (`Anthropic` NuGet v12.x) — uses `ContentBlock` union type with `TryPickText()`, not `OfType<TextBlock>()`
+- **No SDK for the other providers** — Ollama, OpenAI and the rest are reached with `HttpClient` and `System.Text.Json` against `/v1/chat/completions`. Adding an OpenAI-compatible provider must not add a package.
 - Win32 P/Invoke via `LibraryImport` (not `DllImport`)
 
 ## Architecture
@@ -27,11 +30,21 @@ App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event r
 ├── Services/CorrectionService.cs — Pipeline orchestrator (capture → AI → paste)
 │   ├── Services/ClipboardManager.cs — SendInput Ctrl+C/V, clipboard save/restore
 │   ├── Services/FocusTracker.cs     — GetForegroundWindow, IsWindow, IsIconic, RestoreFocus
-│   └── Services/AiClient.cs        — AnthropicClient wrapper, timeout vs cancellation handling
+│   └── Services/Providers/          — One provider abstraction, two implementations
+│       ├── IAiProvider.cs             — DisplayName, ProviderId, IsLocal, CorrectAsync, ListModelsAsync
+│       ├── ProviderPreset.cs          — Preset record + KeyRequirement (None/Optional/Required)
+│       ├── ProviderPresets.cs         — The four-row table: Anthropic, Ollama, OpenAI, Custom
+│       ├── AnthropicProvider.cs       — AnthropicClient wrapper, assistant-prefill, typed exceptions
+│       ├── OpenAiCompatibleProvider.cs — /v1/chat/completions for Ollama, OpenAI and anything else
+│       └── ProviderFactory.cs         — Builds the active provider, caches on a hash of its config
+├── Services/ResponseSanitizer.cs  — Strips model preamble; flags replies that still look chatty
+├── Services/PromptTemplates.cs    — Shared user message + the two prompt suffixes
+├── Services/DpapiString.cs        — Protect/Unprotect, returns "" rather than throwing
 ├── Views/OverlayWindow.xaml       — Floating overlay (processing → diff → error → applied states)
-│                                    Clickable buttons, mode selector, pin toggle, fade animation
-├── Views/SettingsWindow.xaml      — API key (PasswordBox + show/copy), hotkey, model, mode, auto-apply
-├── Models/AppSettings.cs          — JSON persistence, DPAPI-encrypted API key
+│                                    Buttons, mode + provider selectors, elapsed counter, fade animation
+├── Views/SettingsWindow.xaml      — Provider, base URL, key, model, test connection, hotkey, auto-apply
+├── Models/AppSettings.cs          — JSON persistence, ActiveProviderId, per-provider configs
+├── Models/ProviderConfig.cs       — Per-provider BaseUrl, Model, DPAPI-encrypted key
 ├── Models/CorrectionMode.cs       — Mode record (Name, SystemPrompt) with 6 built-in defaults
 ├── Models/CorrectionHistory.cs    — Fixed-size ring buffer of last 10 CorrectionResults
 ├── Models/CorrectionResult.cs     — Result record with Error() factory
@@ -45,8 +58,14 @@ App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event r
 - **SetForegroundWindow** restores focus to source app before Ctrl+C — hotkey processing can shift focus
 - **Overlay must never double-hide** — `FadeOutAndHide()` animates opacity then calls `Hide()` on completion. Calling `Hide()` separately after `FadeOutAndHide()` corrupts window state and breaks subsequent `Show()` calls. The cancel path in `App.xaml.cs` must NOT call `_overlay.Hide()` — the overlay handles its own fade.
 - **WPF ComboBox dark theme requires full custom ControlTemplate** — setting `Foreground`/`Background` on a ComboBox is ignored because the default template hardcodes colors. Both the ComboBox and ComboBoxItem need complete `ControlTemplate` overrides (see SettingsWindow.xaml and OverlayWindow.xaml for working examples).
+- **A custom ComboBox template needs `PART_EditableTextBox` before `IsEditable` does anything** — WPF resolves that template part by exact name. Without it the control degrades to selection-only *silently*: it compiles, it renders, and typing simply does nothing. SettingsWindow's template has the part; OverlayWindow's does not, which is fine only because nothing there is editable. Add it before setting `IsEditable` on an overlay ComboBox.
 - **HttpClient timeout throws TaskCanceledException** (subclass of OperationCanceledException), not HttpRequestException. Distinguish from user cancellation by checking `ct.IsCancellationRequested` in the catch clause.
+- **One OpenAI-compatible client serves Ollama, OpenAI and custom endpoints** — they share the `/v1/chat/completions` wire format, so adding a provider is a row in `ProviderPresets`, not new code. Anthropic keeps its own SDK for the assistant-prefill trick and typed exceptions, and is the reason `IAiProvider` exists rather than one client.
+- **Per-provider timeouts come from a linked `CancellationTokenSource`, not `HttpClient.Timeout`** — the `HttpClient` is shared and static to avoid socket exhaustion, so it cannot carry a per-provider deadline. Ollama gets 120s because a cold model spends 10-20s loading into RAM before its first token; OpenAI gets 30s; Anthropic 10s.
+- **`max_tokens` vs `max_completion_tokens`** — OpenAI deprecated the former and *rejects* it on o-series models; Ollama and llama.cpp understand only the former. This is why `ProviderPreset` carries `TokenParam` as data rather than the client picking one.
+- **`ProviderFactory` caches on a SHA-256 hash of the whole config tuple, including the key's value** — an earlier version keyed on the key's *length*, which meant rotating a key to a same-length replacement (the normal case, since key formats are fixed-length) kept serving a provider holding the revoked credential. The digest persists in the cache key, never the secret.
 - **API key encrypted with DPAPI** (`ProtectedData.Protect`, `DataProtectionScope.CurrentUser`)
+- **Settings writes credentials per provider and never touches the legacy top-level `ApiKey`** — that field is read only by the one-time migration in `AppSettings.LoadAsync`. Anything asking "is this app set up yet?" must check `_aiClient is null`, not the legacy key: a user on Ollama has no key and needs none, and a legacy-key check traps them in the first-run Settings dialog forever.
 - Services created once at startup, not per hotkey press (prevents HttpClient socket exhaustion)
 - `ShutdownMode="OnExplicitShutdown"`, no StartupUri — app runs from system tray
 - Named Mutex for single-instance enforcement
@@ -67,11 +86,15 @@ taskkill /IM TextFix.exe /F 2>/dev/null; dotnet build
 ## Testing
 
 ```bash
-dotnet test                                              # all 23 tests
+dotnet test                                              # all 185 tests
 dotnet test --filter FullyQualifiedName~AppSettingsTests  # single test class
 ```
 
-23 tests: 10 AppSettings (DPAPI, migration, modes), 6 CorrectionMode, 3 CorrectionHistory, 4 AiClient.
+185 cases. Note that xUnit expands every `[Theory]`/`[InlineData]` pair into its own case, so counting attributes in the source undercounts — trust `dotnet test`.
+
+Covered: settings persistence, DPAPI round-trips and legacy migration; correction modes, history and results; the provider preset table, factory caching and both provider implementations (via a stubbed `HttpMessageHandler`, never a real endpoint); response sanitizing; cost estimation; diffing; stats; logging; hotkey parsing.
+
+Not covered by tests, by design: WPF and WinForms UI wiring. Assertions against `ComboBox.Items` would be test theatre — the overlay and Settings window are verified by hand.
 
 ## Releasing
 
@@ -86,4 +109,6 @@ This creates a GitHub Release with `TextFix-v0.2.1-win-x64.zip` attached.
 
 ## Settings
 
-Stored at `%APPDATA%/TextFix/settings.json`. API key is DPAPI-encrypted; legacy plaintext keys are auto-migrated on load.
+Stored at `%APPDATA%/TextFix/settings.json`. Each provider has its own entry under `Providers` holding its base URL, model and DPAPI-encrypted key; `ActiveProviderId` selects which one is used. Legacy plaintext keys, and the pre-multi-provider top-level `ApiKey`/`Model` fields, are migrated on load.
+
+**This file contains a live API key.** Do not run the app from an agent session or test harness — starting TextFix loads and rewrites it.
