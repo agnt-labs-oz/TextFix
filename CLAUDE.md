@@ -12,7 +12,7 @@ Hotkey-triggered select-correct-replace with a floating interactive overlay, six
 Text can be corrected by Anthropic, a local Ollama model, OpenAI, or any OpenAI-compatible endpoint (LM Studio, llama.cpp, OpenRouter, Groq, a corporate gateway). The provider is switchable from the overlay's "Via" dropdown and the tray menu, and each provider keeps its own base URL, model and API key.
 
 ### Future
-Custom user-defined modes, real-time auto-correction, streaming responses, an in-app Ollama setup helper.
+Real-time auto-correction, streaming responses, an in-app Ollama setup helper, Google Gemini (its API is not OpenAI-compatible, so it needs a real provider rather than a preset row).
 
 ## Tech Stack
 
@@ -39,15 +39,24 @@ App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event r
 │       └── ProviderFactory.cs         — Builds the active provider, caches on a hash of its config
 ├── Services/ResponseSanitizer.cs  — Strips model preamble; flags replies that still look chatty
 ├── Services/PromptTemplates.cs    — Shared user message + the two prompt suffixes
-├── Services/DpapiString.cs        — Protect/Unprotect, returns "" rather than throwing
+├── Services/DpapiString.cs        — Protect throws on failure; Unprotect returns "" instead
+├── Services/DiffEngine.cs         — Word-level Myers/LCS over whitespace-preserving tokens
+├── Services/CostEstimator.cs      — Per-model USD rates; local inference short-circuits to zero
+├── Services/StatsTracker.cs       — Append-only JSONL aggregates behind the About window
+├── Services/AppLog.cs             — Daily-rolling log, 7-day retention, redacts correction text
+├── Services/StartupRegistration.cs — HKCU\…\Run entry for launch-on-login
+├── Services/UpdateService.cs      — Velopack check/download, applied on exit
 ├── Views/OverlayWindow.xaml       — Floating overlay (processing → diff → error → applied states)
 │                                    Buttons, mode + provider selectors, elapsed counter, fade animation
 ├── Views/SettingsWindow.xaml      — Provider, base URL, key, model, test connection, hotkey, auto-apply
+├── Views/CustomModeDialog.xaml    — Add / edit a user-defined correction mode
+├── Views/AboutWindow.xaml         — Lifetime stats, per-mode breakdown, spend estimate
 ├── Models/AppSettings.cs          — JSON persistence, ActiveProviderId, per-provider configs
 ├── Models/ProviderConfig.cs       — Per-provider BaseUrl, Model, DPAPI-encrypted key
 ├── Models/CorrectionMode.cs       — Mode record (Name, SystemPrompt) with 6 built-in defaults
 ├── Models/CorrectionHistory.cs    — Fixed-size ring buffer of last 10 CorrectionResults
 ├── Models/CorrectionResult.cs     — Result record with Error() factory
+├── Models/StatsAggregate.cs       — Rolled-up totals the About window renders
 └── Interop/NativeMethods.cs       — All Win32 declarations
 ```
 
@@ -61,7 +70,7 @@ App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event r
 - **A custom ComboBox template needs `PART_EditableTextBox` before `IsEditable` does anything** — WPF resolves that template part by exact name. Without it the control degrades to selection-only *silently*: it compiles, it renders, and typing simply does nothing. SettingsWindow's template has the part; OverlayWindow's does not, which is fine only because nothing there is editable. Add it before setting `IsEditable` on an overlay ComboBox.
 - **HttpClient timeout throws TaskCanceledException** (subclass of OperationCanceledException), not HttpRequestException. Distinguish from user cancellation by checking `ct.IsCancellationRequested` in the catch clause.
 - **One OpenAI-compatible client serves Ollama, OpenAI and custom endpoints** — they share the `/v1/chat/completions` wire format, so adding a provider is a row in `ProviderPresets`, not new code. Anthropic keeps its own SDK for the assistant-prefill trick and typed exceptions, and is the reason `IAiProvider` exists rather than one client.
-- **Per-provider timeouts come from a linked `CancellationTokenSource`, not `HttpClient.Timeout`** — the `HttpClient` is shared and static to avoid socket exhaustion, so it cannot carry a per-provider deadline. Ollama gets 120s because a cold model spends 10-20s loading into RAM before its first token; OpenAI gets 30s; Anthropic 10s.
+- **Timeouts are per-provider, but the two providers enforce them differently.** `OpenAiCompatibleProvider` uses a linked `CancellationTokenSource` with `CancelAfter`, because its `HttpClient` is shared and static (to avoid socket exhaustion) and so cannot carry a per-provider deadline. `AnthropicProvider` owns its `AnthropicClient` and just sets `Timeout` on it. Values come from `ProviderPreset.TimeoutSeconds`: Ollama and Custom 120s — a cold local model spends 10-20s loading into RAM before its first token — OpenAI 30s, Anthropic 10s.
 - **`max_tokens` vs `max_completion_tokens`** — OpenAI deprecated the former and *rejects* it on o-series models; Ollama and llama.cpp understand only the former. This is why `ProviderPreset` carries `TokenParam` as data rather than the client picking one.
 - **`ProviderFactory` caches on a SHA-256 hash of the whole config tuple, including the key's value** — an earlier version keyed on the key's *length*, which meant rotating a key to a same-length replacement (the normal case, since key formats are fixed-length) kept serving a provider holding the revoked credential. The digest persists in the cache key, never the secret.
 - **API key encrypted with DPAPI** (`ProtectedData.Protect`, `DataProtectionScope.CurrentUser`)
@@ -92,7 +101,9 @@ dotnet test --filter FullyQualifiedName~AppSettingsTests  # single test class
 
 185 cases. Note that xUnit expands every `[Theory]`/`[InlineData]` pair into its own case, so counting attributes in the source undercounts — trust `dotnet test`.
 
-Covered: settings persistence, DPAPI round-trips and legacy migration; correction modes, history and results; the provider preset table, factory caching and both provider implementations (via a stubbed `HttpMessageHandler`, never a real endpoint); response sanitizing; cost estimation; diffing; stats; logging; hotkey parsing.
+Covered: settings persistence, DPAPI round-trips and legacy migration; correction modes, history and results; the provider preset table and factory caching; response sanitizing; cost estimation; diffing; stats; logging; hotkey parsing.
+
+`OpenAiCompatibleProvider` is tested end to end against a stubbed `HttpMessageHandler` — no test ever reaches a real endpoint. `AnthropicProvider` is only covered for its guard clauses and properties; its success path goes through the SDK's own client, which the tests do not stub, so `CorrectAsync` is never exercised against a response. Worth closing if that class grows.
 
 Not covered by tests, by design: WPF and WinForms UI wiring. Assertions against `ComboBox.Items` would be test theatre — the overlay and Settings window are verified by hand.
 
