@@ -112,8 +112,9 @@ public partial class App : Application
         // credentials per provider and no longer touches AppSettings.ApiKey at all, so a
         // legacy-key check would trap an Ollama user in this dialog on every launch: they
         // have no API key, they need none, and nothing they can do in Settings would ever
-        // satisfy it. _aiClient is null exactly when the chosen provider requires a key and
-        // hasn't got one — which is the real "not set up yet" condition.
+        // satisfy it. _aiClient is null exactly when the chosen provider is missing
+        // something it cannot run without — a required key, a base URL, or a model — which
+        // is the real "not set up yet" condition. ProviderSetupMessage() names which.
         if (_aiClient is null)
         {
             OpenSettings();
@@ -310,6 +311,27 @@ public partial class App : Application
         _overlay?.SetProviders(BuildProviderLabels(), _settings.ActiveProviderId);
     }
 
+    /// <summary>
+    /// Explains why <see cref="ProviderFactory.Create"/> returned null, in the same order
+    /// the factory checks. Naming the actual missing field matters because the tray and
+    /// overlay switchers let a provider be selected without ever visiting Settings, so the
+    /// user has no idea which field is blank.
+    /// </summary>
+    private string ProviderSetupMessage()
+    {
+        var preset = ProviderPresets.Get(_settings.ActiveProviderId);
+        var config = _settings.GetProviderConfig(preset.Id);
+
+        if (preset.Key == KeyRequirement.Required && string.IsNullOrWhiteSpace(config.GetApiKey()))
+            return $"{preset.DisplayName} needs an API key. Add one in Settings.";
+
+        var url = string.IsNullOrWhiteSpace(config.BaseUrl) ? preset.BaseUrl : config.BaseUrl;
+        if (preset.IsOpenAiCompatible && string.IsNullOrWhiteSpace(url))
+            return $"{preset.DisplayName} needs a Base URL. Add one in Settings.";
+
+        return $"{preset.DisplayName} needs a model. Pick one in Settings.";
+    }
+
     /// <summary>Provider name with its configured model, e.g. "Ollama (local) · llama3.2:3b".</summary>
     private string ProviderLabel(ProviderPreset preset)
     {
@@ -438,10 +460,8 @@ public partial class App : Application
         {
             if (_aiClient is null)
             {
-                var preset = ProviderPresets.Get(_settings.ActiveProviderId);
                 _overlay?.ShowProcessing(_settings.ActiveModeName);
-                _overlay?.ShowResult(CorrectionResult.Error("",
-                    $"{preset.DisplayName} needs an API key. Add one in Settings."), 0);
+                _overlay?.ShowResult(CorrectionResult.Error("", ProviderSetupMessage()), 0);
                 return;
             }
 
@@ -466,10 +486,8 @@ public partial class App : Application
         {
             if (_aiClient is null)
             {
-                var preset = ProviderPresets.Get(_settings.ActiveProviderId);
                 _overlay?.ShowProcessing(_settings.ActiveModeName);
-                _overlay?.ShowResult(CorrectionResult.Error(text,
-                    $"{preset.DisplayName} needs an API key. Add one in Settings."), 0);
+                _overlay?.ShowResult(CorrectionResult.Error(text, ProviderSetupMessage()), 0);
                 return;
             }
             await _correctionService!.ReapplyAsync(text);
@@ -582,11 +600,10 @@ public partial class App : Application
         {
             if (_aiClient is null)
             {
-                var preset = ProviderPresets.Get(_settings.ActiveProviderId);
-                LogDebug($"No API key configured for {preset.DisplayName}");
+                var message = ProviderSetupMessage();
+                LogDebug($"Provider not usable: {message}");
                 _overlay?.ShowProcessing(_settings.ActiveModeName);
-                _overlay?.ShowResult(CorrectionResult.Error("",
-                    $"{preset.DisplayName} needs an API key. Add one in Settings."), 0);
+                _overlay?.ShowResult(CorrectionResult.Error("", message), 0);
                 return;
             }
 
@@ -687,6 +704,12 @@ public partial class App : Application
             RegisterHotkey();
             RebuildModeMenus();
             SyncTrayState();
+            // Settings writes ActiveProviderId unconditionally on Save, so merely touring
+            // the provider dropdown changes where text is sent. Without this the tray
+            // checkmark and the overlay's "Via" label keep asserting the old provider —
+            // and since the overlay's SelectedIndex still points there, re-selecting it
+            // raises no event and the display can never self-correct.
+            RefreshProviderMenu();
 
             // Apply the new history cap to the running service and persist a trimmed file
             // so the limit takes effect immediately rather than on next launch.

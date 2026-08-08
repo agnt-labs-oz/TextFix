@@ -307,6 +307,49 @@ public class CorrectionHistoryTests
     }
 
     [Fact]
+    public void SessionCost_IgnoresLocalCorrections()
+    {
+        // Regression: this call site kept using a 3-argument Estimate overload that
+        // defaulted isLocal to false, so an Ollama run was billed at the mid-range
+        // fallback rate and the overlay advertised a session cost for free inference.
+        var history = new CorrectionHistory();
+        history.Add(new CorrectionResult
+        {
+            OriginalText = "a", CorrectedText = "b",
+            InputTokens = 1_000_000, OutputTokens = 1_000_000,
+            Model = "llama3.2:3b",
+            IsLocal = true,
+        });
+
+        Assert.Equal(0m, history.SessionCost);
+        Assert.Equal(1, history.TotalCount); // still counted, just not charged for
+    }
+
+    [Fact]
+    public void SessionCost_ChargesLocalAndCloudSeparately()
+    {
+        // A local server can serve a model named after a cloud one. The flag must win.
+        var history = new CorrectionHistory();
+        history.Add(new CorrectionResult
+        {
+            OriginalText = "a", CorrectedText = "b",
+            InputTokens = 1_000_000, OutputTokens = 0,
+            Model = "claude-opus-4-6",
+            IsLocal = true,
+        });
+        history.Add(new CorrectionResult
+        {
+            OriginalText = "c", CorrectedText = "d",
+            InputTokens = 1_000_000, OutputTokens = 0,
+            Model = "claude-opus-4-6",
+            IsLocal = false,
+        });
+
+        // Only the cloud run is charged: $15/M in.
+        Assert.Equal(15m, history.SessionCost);
+    }
+
+    [Fact]
     public void SessionCost_UsesPerModelRates()
     {
         var history = new CorrectionHistory();

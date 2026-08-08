@@ -14,9 +14,18 @@ public class ProviderFactory(AppSettings settings)
     private string? _cacheKey;
 
     /// <summary>
-    /// Returns null when the provider needs a key and none is configured — the caller
-    /// treats that the same way it treats a missing Anthropic key today.
+    /// Returns null when the active provider cannot possibly work as configured, so the
+    /// caller can show "open Settings" instead of letting the request fail obscurely.
     /// </summary>
+    /// <remarks>
+    /// All three checks below are reachable from the tray and overlay switchers, which —
+    /// unlike Settings — have no validation in front of them. Selecting "Custom" from the
+    /// tray without ever opening Settings used to produce a live provider with an empty
+    /// base URL; the request then died inside SendAsync as an unhelpful
+    /// "An unexpected error occurred." Selecting Ollama the same way sent "model": "",
+    /// because Ollama's preset has no default model — it depends entirely on what the
+    /// user has pulled.
+    /// </remarks>
     public IAiProvider? Create()
     {
         var preset = ProviderPresets.Get(settings.ActiveProviderId);
@@ -24,6 +33,16 @@ public class ProviderFactory(AppSettings settings)
         var apiKey = config.GetApiKey();
 
         if (preset.Key == KeyRequirement.Required && string.IsNullOrWhiteSpace(apiKey))
+            return null;
+
+        // Mirror the provider's own fallback order, so this asks the same question the
+        // request would: is there anything to send?
+        var effectiveUrl = string.IsNullOrWhiteSpace(config.BaseUrl) ? preset.BaseUrl : config.BaseUrl;
+        if (preset.IsOpenAiCompatible && string.IsNullOrWhiteSpace(effectiveUrl))
+            return null;
+
+        var effectiveModel = string.IsNullOrWhiteSpace(config.Model) ? preset.DefaultModel : config.Model;
+        if (string.IsNullOrWhiteSpace(effectiveModel))
             return null;
 
         // Hash rather than store. Two things matter here:

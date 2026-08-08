@@ -35,6 +35,12 @@ public class CorrectionService
     {
         Cancel();
         _cts = new CancellationTokenSource();
+        // Hold the token, not the source. Cancel() nulls _cts, and the user can cancel
+        // while this await is outstanding — reading _cts.Token afterwards then throws a
+        // NullReferenceException, which the caller reports as "Something went wrong"
+        // on top of a deliberate cancel. A CancellationToken is a struct and stays valid
+        // after its source is disposed.
+        var token = _cts.Token;
 
         _focusTracker.CaptureSourceWindow();
         _clipboard.SetSourceWindow(_focusTracker.SourceWindow);
@@ -49,10 +55,10 @@ public class CorrectionService
         ProcessingStarted?.Invoke();
 
         var mode = _settings.GetActiveMode();
-        var result = await _aiClient.CorrectAsync(selectedText, mode.SystemPrompt, _cts.Token);
+        var result = await _aiClient.CorrectAsync(selectedText, mode.SystemPrompt, token);
         result = result with { ModeName = mode.Name };
 
-        if (_cts.Token.IsCancellationRequested)
+        if (token.IsCancellationRequested)
             return;
 
         LastResult = result;
@@ -64,14 +70,15 @@ public class CorrectionService
     {
         Cancel();
         _cts = new CancellationTokenSource();
+        var token = _cts.Token; // See TriggerCorrectionAsync — Cancel() nulls _cts mid-await.
 
         ProcessingStarted?.Invoke();
 
         var mode = _settings.GetActiveMode();
-        var result = await _aiClient.CorrectAsync(text, mode.SystemPrompt, _cts.Token);
+        var result = await _aiClient.CorrectAsync(text, mode.SystemPrompt, token);
         result = result with { ModeName = mode.Name };
 
-        if (_cts.Token.IsCancellationRequested)
+        if (token.IsCancellationRequested)
             return;
 
         LastResult = result;
@@ -83,13 +90,14 @@ public class CorrectionService
     {
         Cancel();
         _cts = new CancellationTokenSource();
+        var token = _cts.Token; // See TriggerCorrectionAsync — Cancel() nulls _cts mid-await.
 
         ProcessingStarted?.Invoke();
 
-        var result = await _aiClient.CorrectAsync(text, customPrompt, _cts.Token);
+        var result = await _aiClient.CorrectAsync(text, customPrompt, token);
         result = result with { ModeName = "Custom" };
 
-        if (_cts.Token.IsCancellationRequested)
+        if (token.IsCancellationRequested)
             return;
 
         LastResult = result;

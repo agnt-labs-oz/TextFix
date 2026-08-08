@@ -15,7 +15,7 @@ public class CostEstimatorTests
     [InlineData("claude-opus-4-6", 1_000_000, 1_000_000, 90.0)]
     public void Estimate_ReturnsExpectedCost(string model, int inTokens, int outTokens, double expectedUsd)
     {
-        var actual = (double)CostEstimator.Estimate(model, inTokens, outTokens);
+        var actual = (double)CostEstimator.Estimate(model, inTokens, outTokens, isLocal: false);
         Assert.Equal(expectedUsd, actual, 4);
     }
 
@@ -23,14 +23,14 @@ public class CostEstimatorTests
     public void Estimate_UnknownModel_FallsBackToSonnetRate()
     {
         // Mid-range fallback so unknown models neither under- nor over-estimate wildly.
-        var cost = CostEstimator.Estimate("some-future-model", 1_000_000, 1_000_000);
+        var cost = CostEstimator.Estimate("some-future-model", 1_000_000, 1_000_000, isLocal: false);
         Assert.Equal(18.0m, cost);
     }
 
     [Fact]
     public void Estimate_ZeroTokens_ReturnsZero()
     {
-        Assert.Equal(0m, CostEstimator.Estimate("claude-haiku-4-5-20251001", 0, 0));
+        Assert.Equal(0m, CostEstimator.Estimate("claude-haiku-4-5-20251001", 0, 0, isLocal: false));
     }
 
     [Fact]
@@ -59,11 +59,8 @@ public class CostEstimatorTests
         Assert.True(cost < 18.0m, "gpt-4o-mini must not be priced at the Sonnet fallback rate");
     }
 
-    [Fact]
-    public void Estimate_ThreeArgOverload_StillDefaultsToRemote()
-    {
-        Assert.Equal(
-            CostEstimator.Estimate("claude-haiku-4-5-20251001", 1000, 1000, isLocal: false),
-            CostEstimator.Estimate("claude-haiku-4-5-20251001", 1000, 1000));
-    }
+    // The 3-argument overload that used to live here defaulted isLocal to false, and a
+    // call site in CorrectionHistory kept using it after the flag was added — so local
+    // corrections still accrued cost. The overload is gone; isLocal is now required so
+    // the compiler finds every call site. Do not reintroduce a defaulting overload.
 }

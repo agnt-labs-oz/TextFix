@@ -32,7 +32,7 @@ public sealed class StatsTracker
         {
             Timestamp = result.Timestamp,
             Mode = result.ModeName,
-            Provider = "anthropic",
+            Provider = result.ProviderId,
             Model = result.Model,
             CharsIn = result.OriginalText.Length,
             CharsOut = result.CorrectedText.Length,

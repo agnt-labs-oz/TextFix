@@ -26,13 +26,16 @@ public static class CostEstimator
     // Mid-range fallback so unknown/future models neither under- nor over-estimate wildly.
     private static readonly Rate Fallback = new(3m, 15m);
 
-    public static decimal Estimate(string model, int inputTokens, int outputTokens) =>
-        Estimate(model, inputTokens, outputTokens, isLocal: false);
-
     /// <summary>
     /// Local inference is free regardless of model name — the flag wins over any
     /// rate-table match, since a local server can serve a cloud model's name.
     /// </summary>
+    /// <remarks>
+    /// <paramref name="isLocal"/> is deliberately NOT optional. It used to have a
+    /// convenience overload defaulting to false, and a call site kept using it after the
+    /// flag was introduced — so local corrections still accrued cost at the mid-range
+    /// fallback rate. Requiring the argument makes the compiler find every call site.
+    /// </remarks>
     public static decimal Estimate(string model, int inputTokens, int outputTokens, bool isLocal)
     {
         if (isLocal) return 0m;

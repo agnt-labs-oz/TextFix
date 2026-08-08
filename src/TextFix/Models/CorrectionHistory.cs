@@ -60,7 +60,7 @@ public class CorrectionHistory
 
         TotalCount++;
         SessionCost += TextFix.Services.CostEstimator.Estimate(
-            result.Model, result.InputTokens, result.OutputTokens);
+            result.Model, result.InputTokens, result.OutputTokens, result.IsLocal);
 
         _items.Insert(0, result);
 

@@ -5,6 +5,18 @@ namespace TextFix.Tests.Services.Providers;
 
 public class ProviderFactoryTests
 {
+    /// <summary>
+    /// Ollama's preset carries no default model — it depends entirely on what the user has
+    /// pulled — so a bare config is deliberately unusable and Create() returns null for it.
+    /// Tests that want a working local provider have to say which model.
+    /// </summary>
+    private static AppSettings OllamaSettings(string model = "llama3.2:3b")
+    {
+        var settings = new AppSettings { ActiveProviderId = ProviderPresets.OllamaId };
+        settings.GetProviderConfig(ProviderPresets.OllamaId).Model = model;
+        return settings;
+    }
+
     [Fact]
     public void Create_ReturnsAnthropicProvider_ForAnthropicId()
     {
@@ -17,7 +29,7 @@ public class ProviderFactoryTests
     [Fact]
     public void Create_ReturnsOpenAiCompatible_ForOllama()
     {
-        var settings = new AppSettings { ActiveProviderId = ProviderPresets.OllamaId };
+        var settings = OllamaSettings();
 
         Assert.IsType<OpenAiCompatibleProvider>(new ProviderFactory(settings).Create());
     }
@@ -33,7 +45,7 @@ public class ProviderFactoryTests
     [Fact]
     public void Create_SucceedsWithoutKey_ForLocalProvider()
     {
-        var settings = new AppSettings { ActiveProviderId = ProviderPresets.OllamaId };
+        var settings = OllamaSettings();
 
         Assert.NotNull(new ProviderFactory(settings).Create());
     }
@@ -41,7 +53,7 @@ public class ProviderFactoryTests
     [Fact]
     public void Create_CachesInstance_WhenConfigUnchanged()
     {
-        var settings = new AppSettings { ActiveProviderId = ProviderPresets.OllamaId };
+        var settings = OllamaSettings();
         var factory = new ProviderFactory(settings);
 
         Assert.Same(factory.Create(), factory.Create());
@@ -50,11 +62,11 @@ public class ProviderFactoryTests
     [Fact]
     public void Create_RebuildsInstance_WhenModelChanges()
     {
-        var settings = new AppSettings { ActiveProviderId = ProviderPresets.OllamaId };
+        var settings = OllamaSettings();
         var factory = new ProviderFactory(settings);
         var first = factory.Create();
 
-        settings.GetProviderConfig(ProviderPresets.OllamaId).Model = "qwen2.5:7b";
+        settings.GetProviderConfig(ProviderPresets.OllamaId).Model = "qwen2.5:7b"; // was llama3.2:3b
 
         Assert.NotSame(first, factory.Create());
     }
@@ -62,12 +74,14 @@ public class ProviderFactoryTests
     [Fact]
     public void Create_RebuildsInstance_WhenActiveProviderChanges()
     {
-        var settings = new AppSettings { ActiveProviderId = ProviderPresets.OllamaId };
+        var settings = OllamaSettings();
         var factory = new ProviderFactory(settings);
         var first = factory.Create();
 
         settings.ActiveProviderId = ProviderPresets.CustomId;
-        settings.GetProviderConfig(ProviderPresets.CustomId).BaseUrl = "http://localhost:1234/v1";
+        var custom = settings.GetProviderConfig(ProviderPresets.CustomId);
+        custom.BaseUrl = "http://localhost:1234/v1";
+        custom.Model = "local-model";
 
         Assert.NotSame(first, factory.Create());
     }
@@ -92,13 +106,46 @@ public class ProviderFactoryTests
     [Fact]
     public void Create_ReturnsNewInstance_AfterInvalidate_EvenWhenConfigUnchanged()
     {
-        var settings = new AppSettings { ActiveProviderId = ProviderPresets.OllamaId };
+        var settings = OllamaSettings();
         var factory = new ProviderFactory(settings);
         var first = factory.Create();
 
         factory.Invalidate();
 
         Assert.NotSame(first, factory.Create());
+    }
+
+    [Fact]
+    public void Create_ReturnsNull_WhenOpenAiCompatibleBaseUrlIsEmpty()
+    {
+        // Custom ships with no preset base URL. Reachable from the tray and overlay
+        // switchers, which have no validation in front of them — unlike Settings.
+        // Without this guard the request died inside SendAsync as an unhelpful
+        // "An unexpected error occurred."
+        var settings = new AppSettings { ActiveProviderId = ProviderPresets.CustomId };
+        settings.GetProviderConfig(ProviderPresets.CustomId).Model = "local-model";
+
+        Assert.Null(new ProviderFactory(settings).Create());
+    }
+
+    [Fact]
+    public void Create_ReturnsNull_WhenModelIsEmptyAndPresetHasNoDefault()
+    {
+        // Ollama with nothing pulled and nothing chosen would have sent "model": "".
+        var settings = new AppSettings { ActiveProviderId = ProviderPresets.OllamaId };
+
+        Assert.Null(new ProviderFactory(settings).Create());
+    }
+
+    [Fact]
+    public void Create_UsesPresetDefaults_WhenConfigIsBlank()
+    {
+        // The two guards above must not fire for a preset that supplies its own defaults —
+        // OpenAI has both a base URL and a default model, so a key is all it needs.
+        var settings = new AppSettings { ActiveProviderId = ProviderPresets.OpenAiId };
+        settings.GetProviderConfig(ProviderPresets.OpenAiId).SetApiKey("sk-test");
+
+        Assert.IsType<OpenAiCompatibleProvider>(new ProviderFactory(settings).Create());
     }
 
     [Fact]
