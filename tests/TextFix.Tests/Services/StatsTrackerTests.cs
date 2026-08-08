@@ -41,6 +41,29 @@ public class StatsTrackerTests : IDisposable
     }
 
     [Fact]
+    public async Task RecordAsync_RecordsTheActualProvider()
+    {
+        // Regression: the provider field was the literal "anthropic", so stats.jsonl
+        // mislabelled every Ollama, OpenAI and Custom correction — the one field that
+        // shows where the spend actually went.
+        var tracker = new StatsTracker(_path);
+        await tracker.RecordAsync(new CorrectionResult
+        {
+            OriginalText = "hello wrld",
+            CorrectedText = "hello world",
+            ModeName = "Fix errors",
+            Model = "llama3.2:3b",
+            ProviderId = "ollama",
+            IsLocal = true,
+            InputTokens = 100, OutputTokens = 50,
+        });
+
+        var lines = await File.ReadAllLinesAsync(_path);
+        Assert.Contains("\"provider\":\"ollama\"", lines[0]);
+        Assert.DoesNotContain("\"provider\":\"anthropic\"", lines[0]);
+    }
+
+    [Fact]
     public async Task RecordAsync_SkipsErrors()
     {
         var tracker = new StatsTracker(_path);

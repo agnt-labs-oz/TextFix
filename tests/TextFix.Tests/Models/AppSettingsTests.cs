@@ -1,5 +1,6 @@
 using System.IO;
 using TextFix.Models;
+using TextFix.Services.Providers;
 
 namespace TextFix.Tests.Models;
 
@@ -330,5 +331,19 @@ public class AppSettingsTests : IDisposable
         settings.GetProviderConfig("ollama").Model = "qwen2.5:3b";
 
         Assert.Equal("qwen2.5:3b", settings.ActiveProvider.Model);
+    }
+
+    [Fact]
+    public void ActiveProvider_UnknownId_ResolvesThroughThePresetLikeTheFactoryDoes()
+    {
+        // ProviderFactory looks the config up by ProviderPresets.Get(id).Id, which falls
+        // back to Anthropic. Resolving the raw id here instead would hand back — and
+        // persist — a stray config while corrections ran from the Anthropic one.
+        var settings = new AppSettings { ActiveProviderId = "groq" };
+        settings.GetProviderConfig(ProviderPresets.AnthropicId).Model = "claude-sonnet-4-6";
+
+        Assert.Equal(ProviderPresets.AnthropicId, settings.ActiveProvider.Id);
+        Assert.Equal("claude-sonnet-4-6", settings.ActiveProvider.Model);
+        Assert.DoesNotContain(settings.Providers, p => p.Id == "groq");
     }
 }

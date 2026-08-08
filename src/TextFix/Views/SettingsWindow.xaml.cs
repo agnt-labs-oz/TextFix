@@ -348,6 +348,10 @@ public partial class SettingsWindow : Window
     {
         RefreshModelsButton.IsEnabled = enabled;
         TestConnectionButton.IsEnabled = enabled;
+        // The provider dropdown has to freeze too. Switching mid-lookup runs
+        // LoadFieldsFrom for the incoming provider, and the continuation then writes the
+        // OUTGOING provider's model list and "Connected — N models" into its fields.
+        ProviderBox.IsEnabled = enabled;
     }
 
     private async void OnRefreshModels(object sender, RoutedEventArgs e)
