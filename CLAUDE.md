@@ -102,11 +102,11 @@ taskkill /IM TextFix.exe /F 2>/dev/null; dotnet build
 ## Testing
 
 ```bash
-dotnet test                                              # all 214 tests
+dotnet test                                              # all 215 tests
 dotnet test --filter FullyQualifiedName~AppSettingsTests  # single test class
 ```
 
-214 cases. Note that xUnit expands every `[Theory]`/`[InlineData]` pair into its own case, so counting attributes in the source undercounts — trust `dotnet test`.
+215 cases. Note that xUnit expands every `[Theory]`/`[InlineData]` pair into its own case, so counting attributes in the source undercounts — trust `dotnet test`.
 
 Covered: settings persistence, DPAPI round-trips and legacy migration; correction modes, history and results; the provider preset table and factory caching; response sanitizing; cost estimation; diffing; stats; logging; hotkey parsing.
 

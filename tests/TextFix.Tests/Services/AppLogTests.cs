@@ -38,6 +38,28 @@ public class AppLogTests : IDisposable
     }
 
     [Fact]
+    public void SessionHeader_IsRepeated_InEachDaysFile()
+    {
+        // TextFix launches at login and runs for days. A once-per-process header would
+        // land in day one's file and leave every later file unattributed — which is the
+        // case that needs it most, since a long-running instance is exactly where you
+        // cannot remember which build is loaded.
+        var now = new DateTime(2026, 8, 10, 23, 59, 0, DateTimeKind.Utc);
+        var log = new AppLog(_logDir, AppLog.Level.Warn, "TextFix 9.9.9 started", () => now);
+
+        log.Warn("before midnight");
+        now = now.AddMinutes(2); // 2026-08-11
+        log.Warn("after midnight");
+
+        var day1 = File.ReadAllText(Path.Combine(_logDir, "textfix-2026-08-10.log"));
+        var day2 = File.ReadAllText(Path.Combine(_logDir, "textfix-2026-08-11.log"));
+        Assert.StartsWith("=== TextFix 9.9.9 started", day1);
+        Assert.StartsWith("=== TextFix 9.9.9 started", day2);
+        Assert.Contains("after midnight", day2);
+        Assert.DoesNotContain("after midnight", day1);
+    }
+
+    [Fact]
     public void SessionHeader_IsOmitted_WhenNotSupplied()
     {
         var log = new AppLog(_logDir, AppLog.Level.Warn);

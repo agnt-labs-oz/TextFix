@@ -121,6 +121,13 @@ public class AnthropicProvider : IAiProvider
             // and the app said only that something unexpected happened.
             var detail = ApiErrorBody.ExtractMessage(ex.ResponseBody);
             var status = (int)ex.StatusCode;
+
+            // Log the raw body as well as the message derived from it. When the shape is
+            // one ApiErrorBody does not recognise, detail is null and this is the only
+            // record of what the API actually said — the OpenAI-compatible path logs the
+            // body for the same reason, and the two must be equally diagnosable.
+            _log?.Warn($"[anthropic/{_model}] HTTP {status} — {ApiErrorBody.Truncate(ex.ResponseBody ?? "(no body)")}");
+
             return Fail(text, detail is not null
                 ? $"Anthropic rejected the request ({status}): {detail}"
                 : $"Anthropic rejected the request ({status}). See tray → Open log folder.", ex);

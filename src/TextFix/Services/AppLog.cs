@@ -9,15 +9,22 @@ public sealed class AppLog
     private readonly string _dir;
     private readonly Level _minLevel;
     private readonly string? _sessionInfo;
+    private readonly Func<DateTime> _utcNow;
     private readonly object _gate = new();
     private DateTime _lastCleanupDate = DateTime.MinValue;
-    private bool _sessionHeaderWritten;
+    private DateTime _headerDate = DateTime.MinValue;
 
-    public AppLog(string directory, Level minLevel, string? sessionInfo = null)
+    /// <param name="utcNow">
+    /// Seam for tests only. Three behaviours here turn on the date — the filename, the
+    /// 7-day cleanup, and the build header — and none of them are observable without
+    /// being able to move the clock past midnight.
+    /// </param>
+    public AppLog(string directory, Level minLevel, string? sessionInfo = null, Func<DateTime>? utcNow = null)
     {
         _dir = directory;
         _minLevel = minLevel;
         _sessionInfo = sessionInfo;
+        _utcNow = utcNow ?? (() => DateTime.UtcNow);
     }
 
     public string LogDirectory => _dir;
@@ -38,7 +45,8 @@ public sealed class AppLog
 
                 // Use UTC for filenames, line timestamps, and retention so dates always agree
                 // and DST/clock-skew can't shift records into the wrong file.
-                var todayUtc = DateTime.UtcNow.Date;
+                var now = _utcNow();
+                var todayUtc = now.Date;
                 if (_lastCleanupDate < todayUtc)
                 {
                     CleanupOldLogs();
@@ -47,20 +55,22 @@ public sealed class AppLog
 
                 var path = Path.Combine(_dir, $"textfix-{todayUtc:yyyy-MM-dd}.log");
 
-                // Stamp the build once, on the first line this process actually emits.
-                // The startup banner is Info and so is dropped at the default Warn level,
-                // which used to leave error-only logs with no way to tell which build
-                // wrote them — the exact ambiguity that makes a bug report unanswerable.
-                // Attaching the header to the first surviving line means any file with
-                // content in it identifies its origin, whatever the level.
-                if (!_sessionHeaderWritten)
+                // Stamp the build on the first line this process contributes to each day's
+                // file. The startup banner is Info and so is dropped at the default Warn
+                // level, which used to leave error-only logs with no way to tell which
+                // build wrote them — the ambiguity that makes a bug report unanswerable.
+                //
+                // Tracked per date, not once per process: TextFix launches at login and
+                // runs for days, so a once-only header would land in day one's file and
+                // leave every later file unattributed — the exact case that needs it most.
+                if (_headerDate != todayUtc)
                 {
-                    _sessionHeaderWritten = true;
+                    _headerDate = todayUtc;
                     if (!string.IsNullOrWhiteSpace(_sessionInfo))
                         File.AppendAllText(path, $"=== {_sessionInfo} ===" + Environment.NewLine);
                 }
 
-                var line = $"[{DateTime.UtcNow:o}] [T{Environment.CurrentManagedThreadId,3}] [{level.ToString().ToUpperInvariant()}] {message}";
+                var line = $"[{now:o}] [T{Environment.CurrentManagedThreadId,3}] [{level.ToString().ToUpperInvariant()}] {message}";
                 if (ex is not null)
                     line += Environment.NewLine + FormatException(ex);
                 File.AppendAllText(path, line + Environment.NewLine);
