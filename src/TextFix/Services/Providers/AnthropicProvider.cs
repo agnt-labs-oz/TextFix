@@ -10,6 +10,7 @@ public class AnthropicProvider : IAiProvider
 {
     private readonly AnthropicClient _client;
     private readonly string _model;
+    private readonly AppLog? _log;
 
     public string DisplayName => "Anthropic";
     public string ProviderId => ProviderPresets.AnthropicId;
@@ -24,11 +25,12 @@ public class AnthropicProvider : IAiProvider
         "claude-opus-4-6",
     ];
 
-    public AnthropicProvider(string apiKey, string model, int timeoutSeconds)
+    public AnthropicProvider(string apiKey, string model, int timeoutSeconds, AppLog? log = null)
     {
         if (string.IsNullOrWhiteSpace(apiKey))
             throw new InvalidOperationException("API key is not configured. Set your API key in Settings.");
 
+        _log = log;
         _model = string.IsNullOrWhiteSpace(model) ? KnownModels[0] : model;
         _client = new AnthropicClient
         {
@@ -87,37 +89,78 @@ public class AnthropicProvider : IAiProvider
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            // A deliberate cancel is not a fault — nothing to log.
             return CorrectionResult.Error(text, "Correction cancelled.");
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
             // HttpClient timeout throws TaskCanceledException, a subclass of
             // OperationCanceledException. Only reachable when the user did not cancel.
-            return CorrectionResult.Error(text, "Request timed out — check your connection.");
+            return Fail(text, "Request timed out — check your connection.", ex);
         }
-        catch (AnthropicUnauthorizedException)
+        catch (AnthropicUnauthorizedException ex)
         {
-            return CorrectionResult.Error(text, "API key is invalid. Check your key in Settings.");
+            return Fail(text, "API key is invalid. Check your key in Settings.", ex);
         }
-        catch (AnthropicRateLimitException)
+        catch (AnthropicRateLimitException ex)
         {
-            return CorrectionResult.Error(text, "Rate limited — try again in a moment.");
+            return Fail(text, "Rate limited — try again in a moment.", ex);
         }
-        catch (Anthropic5xxException)
+        catch (Anthropic5xxException ex)
         {
-            return CorrectionResult.Error(text, "Claude service is unavailable. Try again later.");
+            return Fail(text, "Claude service is unavailable. Try again later.", ex);
         }
-        catch (AnthropicIOException)
+        catch (AnthropicApiException ex)
         {
-            return CorrectionResult.Error(text, "Network error — check your connection.");
+            // Everything left in the 4xx family — 400, 403, 404, 422, and any status the
+            // SDK does not model — reaches here, and every one of them used to fall
+            // through to the catch-all below as "An unexpected error occurred."
+            //
+            // That mattered most for the failure it hid best: a 400 whose body reads
+            // "your credit balance is too low". Key valid, model valid, network fine,
+            // and the app said only that something unexpected happened.
+            var detail = ApiErrorBody.ExtractMessage(ex.ResponseBody);
+            var status = (int)ex.StatusCode;
+            return Fail(text, detail is not null
+                ? $"Anthropic rejected the request ({status}): {detail}"
+                : $"Anthropic rejected the request ({status}). See tray → Open log folder.", ex);
         }
-        catch (HttpRequestException)
+        catch (AnthropicIOException ex)
         {
-            return CorrectionResult.Error(text, "Cannot reach API — check your connection.");
+            return Fail(text, "Network error — check your connection.", ex);
         }
-        catch (Exception)
+        catch (HttpRequestException ex)
         {
-            return CorrectionResult.Error(text, "An unexpected error occurred.");
+            return Fail(text, "Cannot reach API — check your connection.", ex);
         }
+        catch (Exception ex)
+        {
+            // Naming the type costs the user nothing and turns an unanswerable bug
+            // report into a searchable one.
+            return Fail(text, $"An unexpected error occurred ({ex.GetType().Name}). See tray → Open log folder.",
+                ex, unexpected: true);
+        }
+    }
+
+    /// <summary>
+    /// Records a failure and returns it. Every error path goes through here, so a
+    /// correction that fails always leaves a trace — the absence of one was the whole
+    /// reason "An unexpected error occurred" was impossible to diagnose.
+    /// </summary>
+    /// <remarks>
+    /// Mapped failures log at Warn and genuinely unexpected ones at Error, both of which
+    /// survive the default LogLevel of Warn. Diagnostics therefore work as shipped,
+    /// without the user first having to know that a log level exists.
+    ///
+    /// The exception goes to <see cref="AppLog"/> rather than being interpolated into the
+    /// message, because AppLog formats exceptions by hand specifically to avoid
+    /// ToString() round-tripping authorization headers into the file.
+    /// </remarks>
+    private CorrectionResult Fail(string text, string message, Exception? ex = null, bool unexpected = false)
+    {
+        var line = $"[anthropic/{_model}] {message}";
+        if (unexpected) _log?.Error(line, ex);
+        else _log?.Warn(line, ex);
+        return CorrectionResult.Error(text, message);
     }
 }

@@ -8,19 +8,22 @@ public sealed class AppLog
 
     private readonly string _dir;
     private readonly Level _minLevel;
+    private readonly string? _sessionInfo;
     private readonly object _gate = new();
     private DateTime _lastCleanupDate = DateTime.MinValue;
+    private bool _sessionHeaderWritten;
 
-    public AppLog(string directory, Level minLevel)
+    public AppLog(string directory, Level minLevel, string? sessionInfo = null)
     {
         _dir = directory;
         _minLevel = minLevel;
+        _sessionInfo = sessionInfo;
     }
 
     public string LogDirectory => _dir;
 
     public void Info(string message) => Write(Level.Info, message, null);
-    public void Warn(string message) => Write(Level.Warn, message, null);
+    public void Warn(string message, Exception? ex = null) => Write(Level.Warn, message, ex);
     public void Error(string message, Exception? ex = null) => Write(Level.Error, message, ex);
 
     private void Write(Level level, string message, Exception? ex)
@@ -43,6 +46,20 @@ public sealed class AppLog
                 }
 
                 var path = Path.Combine(_dir, $"textfix-{todayUtc:yyyy-MM-dd}.log");
+
+                // Stamp the build once, on the first line this process actually emits.
+                // The startup banner is Info and so is dropped at the default Warn level,
+                // which used to leave error-only logs with no way to tell which build
+                // wrote them — the exact ambiguity that makes a bug report unanswerable.
+                // Attaching the header to the first surviving line means any file with
+                // content in it identifies its origin, whatever the level.
+                if (!_sessionHeaderWritten)
+                {
+                    _sessionHeaderWritten = true;
+                    if (!string.IsNullOrWhiteSpace(_sessionInfo))
+                        File.AppendAllText(path, $"=== {_sessionInfo} ===" + Environment.NewLine);
+                }
+
                 var line = $"[{DateTime.UtcNow:o}] [T{Environment.CurrentManagedThreadId,3}] [{level.ToString().ToUpperInvariant()}] {message}";
                 if (ex is not null)
                     line += Environment.NewLine + FormatException(ex);

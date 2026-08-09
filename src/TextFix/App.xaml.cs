@@ -85,8 +85,11 @@ public partial class App : Application
             "TextFix", "logs");
         var level = Enum.TryParse<AppLog.Level>(_settings.LogLevel, ignoreCase: true, out var lvl)
             ? lvl : AppLog.Level.Warn;
-        _log = new AppLog(logDir, level);
-        _log.Info($"TextFix starting (version {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version})");
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        // Passed as the session header too: this Info line is dropped at the default Warn
+        // level, so on a normal install the header is the only thing identifying the build.
+        _log = new AppLog(logDir, level, $"TextFix {version} started {DateTime.UtcNow:u}");
+        _log.Info($"TextFix starting (version {version})");
 
         // Re-apply the autostart preference on every launch so the registry entry tracks the
         // current exe path (matters after a Velopack update if Environment.ProcessPath shifts)
@@ -509,7 +512,7 @@ public partial class App : Application
         _clipboardManager = new ClipboardManager();
         _focusTracker = new FocusTracker();
 
-        _providerFactory = new ProviderFactory(_settings);
+        _providerFactory = new ProviderFactory(_settings, _log);
         _aiClient = _providerFactory.Create();
 
         var history = await CorrectionHistory.LoadAsync(maxItems: _settings.HistoryMaxItems);

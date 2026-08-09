@@ -36,6 +36,7 @@ App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event r
 │       ├── ProviderPresets.cs         — The four-row table: Anthropic, Ollama, OpenAI, Custom
 │       ├── AnthropicProvider.cs       — AnthropicClient wrapper, assistant-prefill, typed exceptions
 │       ├── OpenAiCompatibleProvider.cs — /v1/chat/completions for Ollama, OpenAI and anything else
+│       ├── ApiErrorBody.cs            — Pulls the server's explanation out of an error response
 │       └── ProviderFactory.cs         — Builds the active provider, caches on a hash of its config
 ├── Services/ResponseSanitizer.cs  — Strips model preamble; flags replies that still look chatty
 ├── Services/PromptTemplates.cs    — Shared user message + the two prompt suffixes
@@ -44,7 +45,8 @@ App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event r
 ├── Services/CostEstimator.cs      — Per-model USD rates; local inference short-circuits to zero
 ├── Services/StatsTracker.cs       — Append-only JSONL aggregates behind the About window
 ├── Services/AppLog.cs             — Daily-rolling log, 7-day retention. Formats exceptions by
-│                                    hand rather than ToString(), which can leak auth headers
+│                                    hand rather than ToString(), which can leak auth headers.
+│                                    Stamps a build header on the first line each process emits
 ├── Services/StartupRegistration.cs — HKCU\…\Run entry for launch-on-login
 ├── Services/UpdateService.cs      — Velopack check/download, applied on exit
 ├── Views/OverlayWindow.xaml       — Floating overlay (processing → diff → error → applied states)
@@ -70,6 +72,10 @@ App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event r
 - **WPF ComboBox dark theme requires full custom ControlTemplate** — setting `Foreground`/`Background` on a ComboBox is ignored because the default template hardcodes colors. Both the ComboBox and ComboBoxItem need complete `ControlTemplate` overrides (see SettingsWindow.xaml and OverlayWindow.xaml for working examples).
 - **A custom ComboBox template needs `PART_EditableTextBox` before `IsEditable` does anything** — WPF resolves that template part by exact name. Without it the control degrades to selection-only *silently*: it compiles, it renders, and typing simply does nothing. SettingsWindow's template has the part; OverlayWindow's does not, which is fine only because nothing there is editable. Add it before setting `IsEditable` on an overlay ComboBox.
 - **HttpClient timeout throws TaskCanceledException** (subclass of OperationCanceledException), not HttpRequestException. Distinguish from user cancellation by checking `ct.IsCancellationRequested` in the catch clause.
+- **A failed correction must always leave a log line, and the catch-all must never be the whole story.** Both providers route every error return through a private `Fail` helper that logs before returning — mapped failures at Warn, genuine surprises at Error, so both survive the default `LogLevel` of `Warn` and diagnostics work without the user knowing a log level exists. Deliberate cancels are the one exception: they are routine, and logging them would bury real faults. Until v0.9.x nothing on the provider path logged at all, so `"An unexpected error occurred."` was the complete diagnostic record of a failure.
+- **`AnthropicApiException` is the base of the whole 4xx family**, so catching only `AnthropicUnauthorizedException`/`RateLimit`/`5xx` leaves 400, 403, 404 and 422 falling through to the catch-all. That is what hid a plain "your credit balance is too low" behind "An unexpected error occurred" for an entire release. It carries `StatusCode` and `ResponseBody`; catch it *after* the specific types.
+- **Quote the server's own explanation rather than a bare status code.** `ApiErrorBody` parses the two shapes that cover every endpoint here — `{"error":{"message":…}}` (OpenAI, Anthropic, OpenRouter, Groq) and `{"error":"…"}` (Ollama, llama.cpp) — and returns null for anything else, so a proxy's HTML error page can never be pasted into the overlay as if it were prose. Specific mappings still win where we know better than the server: a 401 always means the key, and a 404 naming a model becomes the exact `ollama pull` command.
+- **Never log the text being corrected.** Provider log lines carry the provider id, model, status and the server's message — never the user's content. `AppLog.FormatException` exists for the same reason at the header level: `Exception.ToString()` on HTTP-backed SDK exceptions can round-trip authorization headers into the file.
 - **One OpenAI-compatible client serves Ollama, OpenAI and custom endpoints** — they share the `/v1/chat/completions` wire format, so adding a provider is a row in `ProviderPresets`, not new code. Anthropic keeps its own SDK for the assistant-prefill trick and typed exceptions, and is the reason `IAiProvider` exists rather than one client.
 - **Timeouts are per-provider, but the two providers enforce them differently.** `OpenAiCompatibleProvider` uses a linked `CancellationTokenSource` with `CancelAfter`, because its `HttpClient` is shared and static (to avoid socket exhaustion) and so cannot carry a per-provider deadline. `AnthropicProvider` owns its `AnthropicClient` and just sets `Timeout` on it. Values come from `ProviderPreset.TimeoutSeconds`: Ollama and Custom 120s — a cold local model spends 10-20s loading into RAM before its first token — OpenAI 30s, Anthropic 10s.
 - **`max_tokens` vs `max_completion_tokens`** — OpenAI deprecated the former and *rejects* it on o-series models; Ollama and llama.cpp understand only the former. This is why `ProviderPreset` carries `TokenParam` as data rather than the client picking one.
@@ -96,11 +102,11 @@ taskkill /IM TextFix.exe /F 2>/dev/null; dotnet build
 ## Testing
 
 ```bash
-dotnet test                                              # all 191 tests
+dotnet test                                              # all 214 tests
 dotnet test --filter FullyQualifiedName~AppSettingsTests  # single test class
 ```
 
-191 cases. Note that xUnit expands every `[Theory]`/`[InlineData]` pair into its own case, so counting attributes in the source undercounts — trust `dotnet test`.
+214 cases. Note that xUnit expands every `[Theory]`/`[InlineData]` pair into its own case, so counting attributes in the source undercounts — trust `dotnet test`.
 
 Covered: settings persistence, DPAPI round-trips and legacy migration; correction modes, history and results; the provider preset table and factory caching; response sanitizing; cost estimation; diffing; stats; logging; hotkey parsing.
 

@@ -1,5 +1,7 @@
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using TextFix.Services;
 using TextFix.Services.Providers;
 
 namespace TextFix.Tests.Services.Providers;
@@ -198,6 +200,129 @@ public class OpenAiCompatibleProviderTests
 
         Assert.True(result.IsError);
         Assert.Contains("Timed out", result.ErrorMessage!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CorrectAsync_QuotesTheServersExplanation_ForOtherwiseUnmappedStatuses()
+    {
+        // The failure this exists for: key valid, model valid, network fine, and the
+        // only thing the user used to see was "Request failed (400)".
+        const string body = """
+        { "error": { "message": "This model's maximum context length is 4096 tokens." } }
+        """;
+        var provider = Make(new StubHttpMessageHandler(HttpStatusCode.BadRequest, body));
+
+        var result = await provider.CorrectAsync("hi there", "Fix errors.");
+
+        Assert.True(result.IsError);
+        Assert.Contains("maximum context length is 4096 tokens", result.ErrorMessage!);
+    }
+
+    [Fact]
+    public async Task CorrectAsync_QuotesOllamasFlatErrorShape()
+    {
+        var provider = Make(new StubHttpMessageHandler(
+            HttpStatusCode.BadRequest, """{ "error": "invalid options: num_gpu" }"""));
+
+        var result = await provider.CorrectAsync("hi there", "Fix errors.");
+
+        Assert.Contains("invalid options: num_gpu", result.ErrorMessage!);
+    }
+
+    [Fact]
+    public async Task CorrectAsync_UnparseableErrorBody_FallsBackToTheGenericWording()
+    {
+        // An HTML error page must not be pasted into the overlay as an explanation.
+        var provider = Make(new StubHttpMessageHandler(
+            HttpStatusCode.BadRequest, "<html><body>Bad Request</body></html>"));
+
+        var result = await provider.CorrectAsync("hi there", "Fix errors.");
+
+        Assert.Contains("Request failed (400)", result.ErrorMessage!);
+        Assert.DoesNotContain("<html>", result.ErrorMessage!);
+    }
+
+    [Fact]
+    public async Task CorrectAsync_ServerErrorWithDetail_KeepsTheDetail()
+    {
+        var provider = Make(new StubHttpMessageHandler(
+            HttpStatusCode.ServiceUnavailable, """{ "error": { "message": "model is loading" } }"""));
+
+        var result = await provider.CorrectAsync("hi there", "Fix errors.");
+
+        Assert.Contains("unavailable", result.ErrorMessage!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("model is loading", result.ErrorMessage!);
+    }
+
+    [Fact]
+    public async Task CorrectAsync_UnexpectedException_NamesTheTypeAndPointsAtTheLog()
+    {
+        // The catch-all can never be made specific, so it has to at least be reportable.
+        var provider = Make(new StubHttpMessageHandler(new InvalidOperationException("boom")));
+
+        var result = await provider.CorrectAsync("hi there", "Fix errors.");
+
+        Assert.True(result.IsError);
+        Assert.Contains("InvalidOperationException", result.ErrorMessage!);
+        Assert.Contains("log", result.ErrorMessage!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CorrectAsync_Failure_IsRecordedInTheLog()
+    {
+        // The point of the whole change: a failed correction must leave a trace at the
+        // default log level, without the user first discovering that a log level exists.
+        var dir = Path.Combine(Path.GetTempPath(), $"TextFixProviderLog_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var log = new AppLog(dir, AppLog.Level.Warn);
+            var preset = ProviderPresets.Get(ProviderPresets.OllamaId);
+            var provider = new OpenAiCompatibleProvider(
+                preset, preset.BaseUrl, "llama3.2:3b", "",
+                new StubHttpMessageHandler(HttpStatusCode.BadRequest, """{ "error": "nope" }"""),
+                log);
+
+            await provider.CorrectAsync("hi there", "Fix errors.");
+
+            var contents = File.ReadAllText(
+                Path.Combine(dir, $"textfix-{DateTime.UtcNow:yyyy-MM-dd}.log"));
+            Assert.Contains("ollama/llama3.2:3b", contents);
+            Assert.Contains("400", contents);
+            Assert.Contains("nope", contents);
+            // The text being corrected is never logged.
+            Assert.DoesNotContain("hi there", contents);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* best effort */ }
+        }
+    }
+
+    [Fact]
+    public async Task CorrectAsync_UserCancellation_IsNotLoggedAsAFailure()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"TextFixProviderLog_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var log = new AppLog(dir, AppLog.Level.Warn);
+            var preset = ProviderPresets.Get(ProviderPresets.OllamaId);
+            var handler = new StubHttpMessageHandler(HttpStatusCode.OK, OkBody, TimeSpan.FromSeconds(5));
+            var provider = new OpenAiCompatibleProvider(preset, preset.BaseUrl, "llama3.2:3b", "", handler, log);
+
+            using var cts = new CancellationTokenSource();
+            var task = provider.CorrectAsync("hi there", "Fix errors.", cts.Token);
+            await cts.CancelAsync();
+            await task;
+
+            // Deliberate cancels are routine. Logging them would bury real faults.
+            Assert.False(File.Exists(Path.Combine(dir, $"textfix-{DateTime.UtcNow:yyyy-MM-dd}.log")));
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* best effort */ }
+        }
     }
 
     [Fact]

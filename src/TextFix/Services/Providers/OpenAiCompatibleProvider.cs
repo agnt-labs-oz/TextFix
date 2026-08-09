@@ -26,6 +26,7 @@ public class OpenAiCompatibleProvider : IAiProvider
     private readonly string _baseUrl;
     private readonly string _model;
     private readonly string _apiKey;
+    private readonly AppLog? _log;
 
     public string DisplayName => _preset.DisplayName;
     public string ProviderId => _preset.Id;
@@ -36,8 +37,10 @@ public class OpenAiCompatibleProvider : IAiProvider
         string baseUrl,
         string model,
         string apiKey,
-        HttpMessageHandler? handler = null)
+        HttpMessageHandler? handler = null,
+        AppLog? log = null)
     {
+        _log = log;
         _preset = preset;
         _baseUrl = (string.IsNullOrWhiteSpace(baseUrl) ? preset.BaseUrl : baseUrl).TrimEnd('/');
         _model = string.IsNullOrWhiteSpace(model) ? preset.DefaultModel : model;
@@ -98,18 +101,23 @@ public class OpenAiCompatibleProvider : IAiProvider
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync(timeoutCts.Token);
-                return CorrectionResult.Error(text, MapStatusToMessage(response.StatusCode, errorBody));
+                // Log the raw body, not just the message we derived from it: when the
+                // shape is one ApiErrorBody does not recognise, this is the only record
+                // of what the endpoint actually said.
+                _log?.Warn($"[{_preset.Id}/{_model}] HTTP {(int)response.StatusCode} from {_baseUrl} — "
+                    + ApiErrorBody.Truncate(errorBody));
+                return Fail(text, MapStatusToMessage(response.StatusCode, errorBody), logged: true);
             }
 
             var payload = await response.Content.ReadFromJsonAsync<ChatResponse>(timeoutCts.Token);
             var content = payload?.Choices?.FirstOrDefault()?.Message?.Content;
 
             if (string.IsNullOrWhiteSpace(content))
-                return CorrectionResult.Error(text, "The model returned an empty response — try again.");
+                return Fail(text, "The model returned an empty response — try again.");
 
             var corrected = ResponseSanitizer.Strip(content);
             if (string.IsNullOrWhiteSpace(corrected))
-                return CorrectionResult.Error(text, "The model returned an empty response — try again.");
+                return Fail(text, "The model returned an empty response — try again.");
 
             return new CorrectionResult
             {
@@ -125,26 +133,51 @@ public class OpenAiCompatibleProvider : IAiProvider
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
+            // A deliberate cancel is not a fault — nothing to log.
             return CorrectionResult.Error(text, "Correction cancelled.");
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
-            return CorrectionResult.Error(text,
-                $"Timed out after {_preset.TimeoutSeconds}s — the model may still be loading.");
+            return Fail(text, $"Timed out after {_preset.TimeoutSeconds}s — the model may still be loading.", ex);
         }
         catch (HttpRequestException ex)
         {
-            return CorrectionResult.Error(text, MapConnectionException(ex));
+            return Fail(text, MapConnectionException(ex), ex);
         }
-        catch (JsonException)
+        catch (JsonException ex)
         {
-            return CorrectionResult.Error(text,
-                $"Unexpected response from {_baseUrl} — is it an OpenAI-compatible endpoint?");
+            return Fail(text, $"Unexpected response from {_baseUrl} — is it an OpenAI-compatible endpoint?", ex);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
-            return CorrectionResult.Error(text, "An unexpected error occurred.");
+            // Naming the type costs the user nothing and turns an unanswerable bug
+            // report into a searchable one.
+            return Fail(text, $"An unexpected error occurred ({ex.GetType().Name}). See tray → Open log folder.",
+                ex, unexpected: true);
         }
+    }
+
+    /// <summary>
+    /// Records a failure and returns it. Every error path goes through here, so a
+    /// correction that fails always leaves a trace — the absence of one was the whole
+    /// reason "An unexpected error occurred" was impossible to diagnose.
+    /// </summary>
+    /// <remarks>
+    /// Mapped failures log at Warn and genuinely unexpected ones at Error, both of which
+    /// survive the default LogLevel of Warn, so diagnostics work as shipped.
+    /// <paramref name="logged"/> is for the non-success-status path, which has already
+    /// written a richer line carrying the raw response body.
+    /// </remarks>
+    private CorrectionResult Fail(
+        string text, string message, Exception? ex = null, bool unexpected = false, bool logged = false)
+    {
+        if (!logged)
+        {
+            var line = $"[{_preset.Id}/{_model}] {message}";
+            if (unexpected) _log?.Error(line, ex);
+            else _log?.Warn(line, ex);
+        }
+        return CorrectionResult.Error(text, message);
     }
 
     public async Task<IReadOnlyList<string>> ListModelsAsync(CancellationToken ct = default)
@@ -167,22 +200,37 @@ public class OpenAiCompatibleProvider : IAiProvider
             .ToList() ?? [];
     }
 
-    private string MapStatusToMessage(HttpStatusCode status, string body) => status switch
+    /// <remarks>
+    /// Where we have a better answer than the server's own wording — a 401 always means
+    /// the key, a 404 mentioning a model is worth turning into the exact
+    /// <c>ollama pull</c> command — the specific message wins. Everywhere else the
+    /// server's explanation is quoted, because a bare "Request failed (400)" is precisely
+    /// the dead end this whole change exists to remove.
+    /// </remarks>
+    private string MapStatusToMessage(HttpStatusCode status, string body)
     {
-        HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
-            "API key is invalid. Check your key in Settings.",
-        HttpStatusCode.TooManyRequests =>
-            "Rate limited — try again in a moment.",
-        HttpStatusCode.NotFound when body.Contains("model", StringComparison.OrdinalIgnoreCase) =>
-            _preset.Id == ProviderPresets.OllamaId
-                ? $"Model '{_model}' isn't available. Pull it with: ollama pull {_model}"
-                : $"Model '{_model}' isn't available on this endpoint.",
-        HttpStatusCode.NotFound =>
-            $"Endpoint not found — check the Base URL (should end in /v1). Tried {_baseUrl}/chat/completions",
-        >= HttpStatusCode.InternalServerError =>
-            $"{_preset.DisplayName} is unavailable. Try again later.",
-        _ => $"Request failed ({(int)status}). Check the Base URL and model in Settings.",
-    };
+        var detail = ApiErrorBody.ExtractMessage(body);
+
+        return status switch
+        {
+            HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
+                "API key is invalid. Check your key in Settings.",
+            HttpStatusCode.TooManyRequests =>
+                "Rate limited — try again in a moment.",
+            HttpStatusCode.NotFound when body.Contains("model", StringComparison.OrdinalIgnoreCase) =>
+                _preset.Id == ProviderPresets.OllamaId
+                    ? $"Model '{_model}' isn't available. Pull it with: ollama pull {_model}"
+                    : $"Model '{_model}' isn't available on this endpoint.",
+            HttpStatusCode.NotFound =>
+                $"Endpoint not found — check the Base URL (should end in /v1). Tried {_baseUrl}/chat/completions",
+            >= HttpStatusCode.InternalServerError => detail is null
+                ? $"{_preset.DisplayName} is unavailable. Try again later."
+                : $"{_preset.DisplayName} is unavailable: {detail}",
+            _ => detail is null
+                ? $"Request failed ({(int)status}). Check the Base URL and model in Settings."
+                : $"{_preset.DisplayName} rejected the request ({(int)status}): {detail}",
+        };
+    }
 
     private string MapConnectionException(HttpRequestException ex)
     {

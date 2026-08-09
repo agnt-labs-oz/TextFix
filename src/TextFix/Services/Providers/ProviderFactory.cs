@@ -8,7 +8,7 @@ namespace TextFix.Services.Providers;
 /// Builds the active provider from settings, caching the instance until the
 /// configuration that produced it changes.
 /// </summary>
-public class ProviderFactory(AppSettings settings)
+public class ProviderFactory(AppSettings settings, AppLog? log = null)
 {
     private IAiProvider? _cached;
     private string? _cacheKey;
@@ -62,8 +62,8 @@ public class ProviderFactory(AppSettings settings)
         // Hand over the resolved values, so what was validated above is exactly what gets
         // built. The providers resolve too, so this is belt-and-braces rather than load-bearing.
         _cached = preset.IsOpenAiCompatible
-            ? new OpenAiCompatibleProvider(preset, effectiveUrl, effectiveModel, apiKey)
-            : new AnthropicProvider(apiKey, effectiveModel, preset.TimeoutSeconds);
+            ? new OpenAiCompatibleProvider(preset, effectiveUrl, effectiveModel, apiKey, handler: null, log)
+            : new AnthropicProvider(apiKey, effectiveModel, preset.TimeoutSeconds, log);
         _cacheKey = key;
         return _cached;
     }
