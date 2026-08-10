@@ -43,6 +43,9 @@ TextFix works with several AI providers — see [Providers](#providers) below. A
 
 1. Go to [console.anthropic.com](https://console.anthropic.com) and create an account (or sign in if you have one). Free signup; you can use your existing Google/GitHub login.
 2. Add a payment method or buy credits at [console.anthropic.com/settings/billing](https://console.anthropic.com/settings/billing). Anthropic requires this before the API will accept requests; the default Haiku model in TextFix is cheap (a typical correction costs a fraction of a cent — see the *About TextFix* dialog for your running spend).
+
+   > **A Claude Pro or Max subscription does not cover this.** Claude.ai subscriptions and API credits are billed separately, and TextFix uses the API. If your balance runs out, corrections fail with *"credit balance is too low"* until you top up — your key and settings are fine.
+
 3. Open [console.anthropic.com/settings/keys](https://console.anthropic.com/settings/keys) and click **Create Key**. Give it a name like "TextFix" so you can recognise it later.
 4. **Copy the key now** — Anthropic only shows the full key once. It starts with `sk-ant-…`.
 5. Keep the key on your clipboard; you'll paste it into TextFix in step 3.
@@ -154,7 +157,11 @@ TextFix is free and MIT-licensed. If it saves you time, you can leave a tip:
 
 ### Shipped
 
-**Unreleased** — Multiple AI providers: Anthropic, local models via Ollama, OpenAI, and any OpenAI-compatible endpoint. Per-provider model and key, switchable from the overlay or tray. Connection test and model discovery in Settings. Elapsed-time counter during correction. Local inference correctly costed at zero.
+**v0.10** — Multiple AI providers: Anthropic, local models via Ollama, OpenAI, and any OpenAI-compatible endpoint (LM Studio, llama.cpp, OpenRouter, Groq, a corporate gateway). Per-provider base URL, model and key, switchable from the overlay's "Via" dropdown or the tray. Connection test and model discovery in Settings. Elapsed-time counter during correction. Local inference correctly costed at zero.
+
+Also: failed corrections are now diagnosable. Every provider error is logged and the API's own explanation is shown, instead of a blanket "An unexpected error occurred" that left nothing in the log to work from.
+
+**v0.9** — Close button on the overlay, and a "Start with Windows" setting that registers TextFix under `HKCU\…\Run`.
 
 **v0.8** — About dialog with local stats panel + Ko-fi support link, "Suggest a feature…" / "Report an issue…" / "Open log folder" / "About TextFix…" tray entries wired to GitHub Discussions/Issues, daily-rolling AppLog with 7-day retention, per-model cost estimator (Haiku/Sonnet/Opus), StatsTracker with JSONL aggregates.
 

@@ -11,6 +11,8 @@ Hotkey-triggered select-correct-replace with a floating interactive overlay, six
 
 Text can be corrected by Anthropic, a local Ollama model, OpenAI, or any OpenAI-compatible endpoint (LM Studio, llama.cpp, OpenRouter, Groq, a corporate gateway). The provider is switchable from the overlay's "Via" dropdown and the tray menu, and each provider keeps its own base URL, model and API key.
 
+A failed correction quotes the API's own explanation and always writes a log line at the default log level. See the diagnostics entries under Key Design Decisions before touching a provider's catch chain.
+
 ### Future
 Real-time auto-correction, streaming responses, an in-app Ollama setup helper, Google Gemini (its API is not OpenAI-compatible, so it needs a real provider rather than a preset row).
 
