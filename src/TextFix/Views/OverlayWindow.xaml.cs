@@ -25,6 +25,18 @@ public partial class OverlayWindow : Window
     private bool _processingInline;
     private CorrectionHistory? _history;
 
+    // Drives ProcessingDetailText while the processing panel is visible — a long local
+    // cold start (Ollama) can take 30s+, and without a ticking counter that reads as a hang.
+    private readonly DispatcherTimer _elapsedTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(100),
+    };
+    private DateTime _processingStartedAt;
+    private string _processingProviderLabel = "";
+    private int _processingTimeoutSeconds;
+    /// <summary>The "Refining with X..." text the inline tick re-renders the timing onto.</summary>
+    private string _processingStatusLabel = "";
+
     // Persisted across sessions so user-resized result windows stay that size and place.
     private double _resultPrefWidth = 640;
     private double _resultPrefHeight = 620;
@@ -44,6 +56,7 @@ public partial class OverlayWindow : Window
     public event Action? RetryRequested;
     public event Action? CopyRequested;
     public event Action<string>? ModeChanged;
+    public event Action<string>? ProviderChanged;
     public event Action? OverlayHidden;
     public event Action<string>? ReapplyRequested;      // text to reapply
     public event Action<double, double, double, double>? BoundsChanged; // width, height, left, top
@@ -56,6 +69,26 @@ public partial class OverlayWindow : Window
         // contract advertised in the action buttons and the Applied-state hint.
         PreviewKeyDown += OnKeyDown;
         PopulateModes();
+
+        _elapsedTimer.Tick += (_, _) =>
+        {
+            var elapsed = DateTime.UtcNow - _processingStartedAt;
+            // Showing the budget alongside the elapsed time is what turns a long
+            // local cold start from "hung" into "working, and here's the deadline".
+            var budget = _processingTimeoutSeconds > 0 ? $" / {_processingTimeoutSeconds}s" : "";
+            var timing = $"{elapsed.TotalSeconds:0.0}s{budget}";
+
+            // Two different surfaces, because the overlay has two processing looks. The
+            // fresh pill shows ProcessingPanel; an inline Redo/Refine keeps the result
+            // on screen and shows only the header spinner, with ProcessingPanel still
+            // collapsed. Writing to ProcessingDetailText in that case would tick away
+            // invisibly — and a refine against a cold local model is exactly when the
+            // user most needs to see that something is still happening.
+            if (_processingInline)
+                StatusText.Text = $"{_processingStatusLabel}   {timing}";
+            else
+                ProcessingDetailText.Text = $"{_processingProviderLabel}   {timing}";
+        };
     }
 
     private void PopulateModes(IReadOnlyList<CorrectionMode>? allModes = null)
@@ -90,12 +123,59 @@ public partial class OverlayWindow : Window
         _suppressModeChange = false;
     }
 
+    /// <summary>Fills the provider dropdown and selects the active one.</summary>
+    public void SetProviders(IReadOnlyList<(string Id, string Label)> providers, string activeId)
+    {
+        _suppressProviderEvent = true;
+        try
+        {
+            ProviderBox.Items.Clear();
+            foreach (var (id, label) in providers)
+                ProviderBox.Items.Add(new ComboBoxItem { Content = label, Tag = id });
+
+            // Fall back to the first entry rather than leaving SelectedIndex at -1. An
+            // unrecognised activeId — a hand-edited settings file — otherwise renders an
+            // empty "Via:" while corrections silently run against the Anthropic fallback
+            // that ProviderPresets.Get resolves to.
+            ProviderBox.SelectedIndex = 0;
+            for (var i = 0; i < ProviderBox.Items.Count; i++)
+            {
+                if (ProviderBox.Items[i] is ComboBoxItem item && (string)item.Tag == activeId)
+                {
+                    ProviderBox.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            _suppressProviderEvent = false;
+        }
+    }
+
+    private bool _suppressProviderEvent;
+
+    private void OnProviderChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressProviderEvent) return;
+        if (ProviderBox.SelectedItem is ComboBoxItem item)
+            ProviderChanged?.Invoke((string)item.Tag);
+    }
+
     public void SetHistory(CorrectionHistory history) => _history = history;
 
-    public void ShowProcessing(string modeLabel = "")
+    public void ShowProcessing(string modeLabel = "") => ShowProcessing(modeLabel, "", 0);
+
+    public void ShowProcessing(string modeName, string providerLabel, int timeoutSeconds)
     {
-        var freshLabel = string.IsNullOrEmpty(modeLabel) ? "Correcting..." : $"Correcting with {modeLabel}...";
-        var inlineLabel = string.IsNullOrEmpty(modeLabel) ? "Refining..." : $"Refining with {modeLabel}...";
+        _processingStartedAt = DateTime.UtcNow;
+        _processingProviderLabel = providerLabel;
+        _processingTimeoutSeconds = timeoutSeconds;
+        ProcessingDetailText.Text = providerLabel;
+        _elapsedTimer.Start();
+
+        var freshLabel = string.IsNullOrEmpty(modeName) ? "Correcting..." : $"Correcting with {modeName}...";
+        var inlineLabel = string.IsNullOrEmpty(modeName) ? "Refining..." : $"Refining with {modeName}...";
 
         // Inline mode: dialog is already visible with a result — keep it, show spinner in header
         if (IsVisible && ResultPanel.Visibility == Visibility.Visible)
@@ -108,6 +188,7 @@ public partial class OverlayWindow : Window
 
             InlineSpinner.Visibility = Visibility.Visible;
             StatusIcon.Visibility = Visibility.Collapsed;
+            _processingStatusLabel = inlineLabel;
             StatusText.Text = inlineLabel;
             StatusText.Foreground = new WpfMedia.SolidColorBrush(WpfMedia.Color.FromRgb(0xE0, 0xE0, 0xE0));
             CountdownText.Visibility = Visibility.Collapsed;
@@ -233,6 +314,7 @@ public partial class OverlayWindow : Window
         CopyButton.IsEnabled = enabled;
         HistoryToggleButton.IsEnabled = enabled;
         ModeBox.IsEnabled = enabled;
+        ProviderBox.IsEnabled = enabled;
     }
 
     public void ShowResult(CorrectionResult result, int autoApplySeconds, bool editable = false)
@@ -241,6 +323,7 @@ public partial class OverlayWindow : Window
         if (_processingInline && result.IsError)
         {
             _processingInline = false;
+            StopElapsedTimer();
             _showingError = true;
             _showingApplied = false;
             StopInlineSpinner();
@@ -267,6 +350,7 @@ public partial class OverlayWindow : Window
         }
 
         _processingInline = false;
+        StopElapsedTimer();
         _currentResult = result;
         _showingIdle = false;
         _historyVisible = false;
@@ -344,6 +428,9 @@ public partial class OverlayWindow : Window
         // Word-level Removed + Added segment counts — accurate even when words shift.
         var changeCount = Math.Max(1, diff.Stats.RemovedWordCount + diff.Stats.AddedWordCount);
         StatusText.Text = $"Fixed {changeCount} error{(changeCount == 1 ? "" : "s")}";
+        ConversationalWarning.Visibility = result.LooksConversational
+            ? Visibility.Visible
+            : Visibility.Collapsed;
         ApplyEditableState(editable);
 
         Activate();
@@ -356,6 +443,7 @@ public partial class OverlayWindow : Window
     public void ShowApplied()
     {
         _processingInline = false;
+        StopElapsedTimer();
         _showingError = false;
         _showingApplied = true;
         _showingIdle = false;
@@ -402,6 +490,7 @@ public partial class OverlayWindow : Window
         _showingApplied = false;
         _showingIdle = false;
         _processingInline = false;
+        StopElapsedTimer();
         StopInlineSpinner();
         Opacity = 1;
         ProcessingPanel.Visibility = Visibility.Collapsed;
@@ -527,6 +616,7 @@ public partial class OverlayWindow : Window
 
     public void FadeOutAndHide()
     {
+        StopElapsedTimer();
         var fadeOut = (Storyboard)FindResource("FadeOut");
         var clone = fadeOut.Clone();
         clone.Completed += (_, _) =>
@@ -739,6 +829,12 @@ public partial class OverlayWindow : Window
         CountdownText.Visibility = Visibility.Collapsed;
     }
 
+    /// <summary>
+    /// Ends the processing display. Must be called from every path that leaves the
+    /// processing state — a DispatcherTimer left running ticks forever on the UI thread.
+    /// </summary>
+    private void StopElapsedTimer() => _elapsedTimer.Stop();
+
     private Storyboard? _spinnerStoryboard;
 
     private void StartSpinnerAnimation()
@@ -795,6 +891,7 @@ public partial class OverlayWindow : Window
         _showingIdle = true;
         _history = history;
         StopAutoApply();
+        StopElapsedTimer();
         StopSpinnerAnimation();
         StopInlineSpinner();
         Opacity = 1;

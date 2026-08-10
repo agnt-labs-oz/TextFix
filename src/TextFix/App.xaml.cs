@@ -7,6 +7,7 @@ using System.Windows.Interop;
 using TextFix.Interop;
 using TextFix.Models;
 using TextFix.Services;
+using TextFix.Services.Providers;
 using TextFix.Views;
 using Velopack;
 using Application = System.Windows.Application;
@@ -38,9 +39,11 @@ public partial class App : Application
     private static AppLog? _log;
     private NotifyIcon? _trayIcon;
     private ToolStripMenuItem? _historyMenu;
+    private ToolStripMenuItem? _providerMenu;
     private HotkeyListener? _hotkeyListener;
     private CorrectionService? _correctionService;
-    private AiClient? _aiClient;
+    private ProviderFactory? _providerFactory;
+    private IAiProvider? _aiClient;
     private ClipboardManager? _clipboardManager;
     private FocusTracker? _focusTracker;
     private OverlayWindow? _overlay;
@@ -82,8 +85,11 @@ public partial class App : Application
             "TextFix", "logs");
         var level = Enum.TryParse<AppLog.Level>(_settings.LogLevel, ignoreCase: true, out var lvl)
             ? lvl : AppLog.Level.Warn;
-        _log = new AppLog(logDir, level);
-        _log.Info($"TextFix starting (version {System.Reflection.Assembly.GetExecutingAssembly().GetName().Version})");
+        var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
+        // Passed as the session header too: this Info line is dropped at the default Warn
+        // level, so on a normal install the header is the only thing identifying the build.
+        _log = new AppLog(logDir, level, $"TextFix {version} started {DateTime.UtcNow:u}");
+        _log.Info($"TextFix starting (version {version})");
 
         // Re-apply the autostart preference on every launch so the registry entry tracks the
         // current exe path (matters after a Velopack update if Environment.ProcessPath shifts)
@@ -94,16 +100,25 @@ public partial class App : Application
         CreateHiddenWindow();
         SetupTrayIcon();
         SetupOverlay();
+        RefreshProviderMenu();
         await SetupServicesAsync();
         RegisterHotkey();
 
         _updateService = new UpdateService();
         _ = CheckForUpdatesSilentAsync();
 
-        // Prompt for API key on first run; otherwise show a brief tray balloon so the user
+        // Prompt for setup on first run; otherwise show a brief tray balloon so the user
         // knows the app launched (without that, a normal start has zero visible feedback —
         // just an icon appearing in the system tray that's easy to miss).
-        if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+        //
+        // Gate on the active provider, not on the legacy top-level key. Settings now writes
+        // credentials per provider and no longer touches AppSettings.ApiKey at all, so a
+        // legacy-key check would trap an Ollama user in this dialog on every launch: they
+        // have no API key, they need none, and nothing they can do in Settings would ever
+        // satisfy it. _aiClient is null exactly when the chosen provider is missing
+        // something it cannot run without — a required key, a base URL, or a model — which
+        // is the real "not set up yet" condition. ProviderSetupMessage() names which.
+        if (_aiClient is null)
         {
             OpenSettings();
         }
@@ -210,6 +225,23 @@ public partial class App : Application
         }
         _trayIcon.ContextMenuStrip.Items.Add(modeMenu);
 
+        // Provider submenu
+        _providerMenu = new ToolStripMenuItem("Provider");
+        foreach (var preset in ProviderPresets.All)
+        {
+            var item = new ToolStripMenuItem(preset.DisplayName)
+            {
+                Tag = preset.Id,
+                Checked = preset.Id == _settings.ActiveProviderId,
+            };
+            item.Click += (s, _) =>
+            {
+                if (s is ToolStripMenuItem mi && mi.Tag is string id) SwitchProvider(id);
+            };
+            _providerMenu.DropDownItems.Add(item);
+        }
+        _trayIcon.ContextMenuStrip.Items.Add(_providerMenu);
+
         // History submenu
         _historyMenu = new ToolStripMenuItem("History") { Enabled = false };
         _trayIcon.ContextMenuStrip.Items.Add(_historyMenu);
@@ -252,6 +284,69 @@ public partial class App : Application
         _overlay?.SetActiveMode(modeName);
     }
 
+    /// <summary>
+    /// Switches the active provider and persists it. Takes effect on the next
+    /// correction — it deliberately does not re-run the result currently on screen.
+    /// </summary>
+    private async void SwitchProvider(string providerId)
+    {
+        _settings.ActiveProviderId = providerId;
+        RebuildServices();
+        RefreshProviderMenu();
+        try
+        {
+            await _settings.SaveAsync();
+        }
+        catch (Exception ex)
+        {
+            LogError(ex);
+        }
+    }
+
+    private void RefreshProviderMenu()
+    {
+        if (_providerMenu is not null)
+        {
+            foreach (ToolStripMenuItem mi in _providerMenu.DropDownItems)
+                mi.Checked = (string?)mi.Tag == _settings.ActiveProviderId;
+        }
+
+        _overlay?.SetProviders(BuildProviderLabels(), _settings.ActiveProviderId);
+    }
+
+    /// <summary>
+    /// Explains why <see cref="ProviderFactory.Create"/> returned null, in the same order
+    /// the factory checks. Naming the actual missing field matters because the tray and
+    /// overlay switchers let a provider be selected without ever visiting Settings, so the
+    /// user has no idea which field is blank.
+    /// </summary>
+    private string ProviderSetupMessage()
+    {
+        var preset = ProviderPresets.Get(_settings.ActiveProviderId);
+        var config = _settings.GetProviderConfig(preset.Id);
+
+        if (preset.Key == KeyRequirement.Required && string.IsNullOrWhiteSpace(config.GetApiKey()))
+            return $"{preset.DisplayName} needs an API key. Add one in Settings.";
+
+        var url = string.IsNullOrWhiteSpace(config.BaseUrl) ? preset.BaseUrl : config.BaseUrl;
+        if (preset.IsOpenAiCompatible && string.IsNullOrWhiteSpace(url))
+            return $"{preset.DisplayName} needs a Base URL. Add one in Settings.";
+
+        return $"{preset.DisplayName} needs a model. Pick one in Settings.";
+    }
+
+    /// <summary>Provider name with its configured model, e.g. "Ollama (local) · llama3.2:3b".</summary>
+    private string ProviderLabel(ProviderPreset preset)
+    {
+        var config = _settings.GetProviderConfig(preset.Id);
+        var model = string.IsNullOrWhiteSpace(config.Model) ? preset.DefaultModel : config.Model;
+        return string.IsNullOrWhiteSpace(model) ? preset.DisplayName : $"{preset.DisplayName} · {model}";
+    }
+
+    /// <summary>Provider names with their configured model, e.g. "Ollama · llama3.2:3b".</summary>
+    private List<(string Id, string Label)> BuildProviderLabels() =>
+        ProviderPresets.All.Select(p => (p.Id, ProviderLabel(p))).ToList();
+
     private void RefreshHistoryMenu()
     {
         if (_historyMenu is null || _correctionService is null) return;
@@ -288,6 +383,7 @@ public partial class App : Application
         _overlay.UserResponded += OnUserResponded;
         _overlay.RetryRequested += OnRetryRequested;
         _overlay.ModeChanged += OnOverlayModeChanged;
+        _overlay.ProviderChanged += SwitchProvider;
         _overlay.OverlayHidden += OnOverlayHidden;
         _overlay.CopyRequested += OnCopyRequested;
         _overlay.ReapplyRequested += OnReapplyRequested;
@@ -365,12 +461,10 @@ public partial class App : Application
 
         try
         {
-            if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+            if (_aiClient is null)
             {
                 _overlay?.ShowProcessing(_settings.ActiveModeName);
-                _overlay?.ShowResult(
-                    CorrectionResult.Error("", "Set up your API key in Settings."),
-                    0);
+                _overlay?.ShowResult(CorrectionResult.Error("", ProviderSetupMessage()), 0);
                 return;
             }
 
@@ -393,10 +487,10 @@ public partial class App : Application
         if (Interlocked.CompareExchange(ref _isBusy, 1, 0) != 0) return;
         try
         {
-            if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+            if (_aiClient is null)
             {
                 _overlay?.ShowProcessing(_settings.ActiveModeName);
-                _overlay?.ShowResult(CorrectionResult.Error(text, "Set up your API key in Settings."), 0);
+                _overlay?.ShowResult(CorrectionResult.Error(text, ProviderSetupMessage()), 0);
                 return;
             }
             await _correctionService!.ReapplyAsync(text);
@@ -418,21 +512,28 @@ public partial class App : Application
         _clipboardManager = new ClipboardManager();
         _focusTracker = new FocusTracker();
 
-        if (!string.IsNullOrWhiteSpace(_settings.GetApiKey()))
-            _aiClient = new AiClient(_settings);
+        _providerFactory = new ProviderFactory(_settings, _log);
+        _aiClient = _providerFactory.Create();
 
         var history = await CorrectionHistory.LoadAsync(maxItems: _settings.HistoryMaxItems);
         _statsTracker = new StatsTracker(StatsTracker.DefaultPath);
         _correctionService = new CorrectionService(_clipboardManager, _focusTracker, _aiClient!, _settings, history);
 
         _correctionService.ProcessingStarted += () =>
-            Dispatcher.Invoke(() => _overlay?.ShowProcessing(_settings.ActiveModeName));
+            Dispatcher.Invoke(() =>
+            {
+                var preset = ProviderPresets.Get(_settings.ActiveProviderId);
+                _overlay?.ShowProcessing(
+                    _settings.ActiveModeName, ProviderLabel(preset), preset.TimeoutSeconds);
+            });
 
         _correctionService.CorrectionCompleted += result =>
             Dispatcher.Invoke(async () =>
             {
-                var autoApply = _settings.ManualApplyOnly ? 0 : _settings.OverlayAutoApplySeconds;
-                _overlay?.ShowResult(result, autoApply, _settings.ManualApplyOnly);
+                var autoApply = _settings.ManualApplyOnly || result.LooksConversational
+                    ? 0
+                    : _settings.OverlayAutoApplySeconds;
+                _overlay?.ShowResult(result, autoApply, _settings.ManualApplyOnly || result.LooksConversational);
                 RefreshHistoryMenu();
                 await _correctionService.History.SaveAsync();
                 if (_statsTracker is not null)
@@ -450,12 +551,25 @@ public partial class App : Application
             Dispatcher.Invoke(() => _overlay?.ShowFocusLost());
     }
 
+    /// <summary>
+    /// Rebuilds the active provider from current settings. Every path that can change a
+    /// provider's credentials must go through here, so the factory cache cannot keep
+    /// serving a provider holding a revoked key.
+    /// </summary>
+    /// <remarks>
+    /// INVARIANT: when <c>Create()</c> returns null (a key-requiring provider with no key),
+    /// <see cref="CorrectionService"/> keeps its previous provider — <c>UpdateProvider</c>
+    /// takes a non-nullable argument, so there is nothing to hand it. That stale instance is
+    /// unreachable only because every caller gates on <c>_aiClient is null</c> first. Any new
+    /// code path that invokes _correctionService MUST do the same, or it will silently run
+    /// against the provider the user just switched away from.
+    /// </remarks>
     private void RebuildServices()
     {
-        _aiClient = !string.IsNullOrWhiteSpace(_settings.GetApiKey())
-            ? new AiClient(_settings)
-            : null;
-        _correctionService?.UpdateAiClient(_aiClient!);
+        _providerFactory?.Invalidate();
+        _aiClient = _providerFactory?.Create();
+        if (_aiClient is not null)
+            _correctionService?.UpdateProvider(_aiClient);
     }
 
     private void RegisterHotkey()
@@ -487,13 +601,12 @@ public partial class App : Application
 
         try
         {
-            if (string.IsNullOrWhiteSpace(_settings.GetApiKey()))
+            if (_aiClient is null)
             {
-                LogDebug("No API key configured");
+                var message = ProviderSetupMessage();
+                LogDebug($"Provider not usable: {message}");
                 _overlay?.ShowProcessing(_settings.ActiveModeName);
-                _overlay?.ShowResult(
-                    CorrectionResult.Error("", "Set up your API key in Settings."),
-                    0);
+                _overlay?.ShowResult(CorrectionResult.Error("", message), 0);
                 return;
             }
 
@@ -594,6 +707,12 @@ public partial class App : Application
             RegisterHotkey();
             RebuildModeMenus();
             SyncTrayState();
+            // Settings writes ActiveProviderId unconditionally on Save, so merely touring
+            // the provider dropdown changes where text is sent. Without this the tray
+            // checkmark and the overlay's "Via" label keep asserting the old provider —
+            // and since the overlay's SelectedIndex still points there, re-selecting it
+            // raises no event and the display can never self-correct.
+            RefreshProviderMenu();
 
             // Apply the new history cap to the running service and persist a trimmed file
             // so the limit takes effect immediately rather than on next launch.

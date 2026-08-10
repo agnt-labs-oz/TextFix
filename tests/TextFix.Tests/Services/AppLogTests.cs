@@ -19,6 +19,70 @@ public class AppLogTests : IDisposable
     }
 
     [Fact]
+    public void SessionHeader_IsWrittenOnceBeforeTheFirstSurvivingLine()
+    {
+        // The startup banner is Info, so at the default Warn level an error-only log
+        // carried no build identity at all — which is what made a "TextFix is broken"
+        // report impossible to place against a version.
+        var log = new AppLog(_logDir, AppLog.Level.Warn, "TextFix 9.9.9 started");
+
+        log.Info("dropped");   // below the level — must not trigger the header either
+        log.Warn("first");
+        log.Warn("second");
+
+        var contents = File.ReadAllText(Path.Combine(_logDir, $"textfix-{DateTime.UtcNow:yyyy-MM-dd}.log"));
+        var lines = contents.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries);
+        Assert.StartsWith("=== TextFix 9.9.9 started", lines[0]);
+        Assert.Single(lines, l => l.StartsWith("==="));
+        Assert.Contains("first", lines[1]);
+    }
+
+    [Fact]
+    public void SessionHeader_IsRepeated_InEachDaysFile()
+    {
+        // TextFix launches at login and runs for days. A once-per-process header would
+        // land in day one's file and leave every later file unattributed — which is the
+        // case that needs it most, since a long-running instance is exactly where you
+        // cannot remember which build is loaded.
+        var now = new DateTime(2026, 8, 10, 23, 59, 0, DateTimeKind.Utc);
+        var log = new AppLog(_logDir, AppLog.Level.Warn, "TextFix 9.9.9 started", () => now);
+
+        log.Warn("before midnight");
+        now = now.AddMinutes(2); // 2026-08-11
+        log.Warn("after midnight");
+
+        var day1 = File.ReadAllText(Path.Combine(_logDir, "textfix-2026-08-10.log"));
+        var day2 = File.ReadAllText(Path.Combine(_logDir, "textfix-2026-08-11.log"));
+        Assert.StartsWith("=== TextFix 9.9.9 started", day1);
+        Assert.StartsWith("=== TextFix 9.9.9 started", day2);
+        Assert.Contains("after midnight", day2);
+        Assert.DoesNotContain("after midnight", day1);
+    }
+
+    [Fact]
+    public void SessionHeader_IsOmitted_WhenNotSupplied()
+    {
+        var log = new AppLog(_logDir, AppLog.Level.Warn);
+        log.Warn("only");
+
+        var contents = File.ReadAllText(Path.Combine(_logDir, $"textfix-{DateTime.UtcNow:yyyy-MM-dd}.log"));
+        Assert.DoesNotContain("===", contents);
+    }
+
+    [Fact]
+    public void Warn_WithException_RecordsTypeAndMessage()
+    {
+        var log = new AppLog(_logDir, AppLog.Level.Warn);
+
+        log.Warn("provider failed", new InvalidOperationException("boom"));
+
+        var contents = File.ReadAllText(Path.Combine(_logDir, $"textfix-{DateTime.UtcNow:yyyy-MM-dd}.log"));
+        Assert.Contains("provider failed", contents);
+        Assert.Contains("System.InvalidOperationException", contents);
+        Assert.Contains("boom", contents);
+    }
+
+    [Fact]
     public void Write_CreatesFileNamedByDate()
     {
         var log = new AppLog(_logDir, AppLog.Level.Info);

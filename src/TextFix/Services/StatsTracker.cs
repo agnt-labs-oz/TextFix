@@ -32,13 +32,13 @@ public sealed class StatsTracker
         {
             Timestamp = result.Timestamp,
             Mode = result.ModeName,
-            Provider = "anthropic",
+            Provider = result.ProviderId,
             Model = result.Model,
             CharsIn = result.OriginalText.Length,
             CharsOut = result.CorrectedText.Length,
             TokensIn = result.InputTokens,
             TokensOut = result.OutputTokens,
-            CostEstimate = CostEstimator.Estimate(result.Model, result.InputTokens, result.OutputTokens),
+            CostEstimate = CostEstimator.Estimate(result.Model, result.InputTokens, result.OutputTokens, result.IsLocal),
             Status = "success",
         };
 

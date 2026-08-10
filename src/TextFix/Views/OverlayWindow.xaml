@@ -295,8 +295,12 @@
                             <RotateTransform CenterX="9" CenterY="9"/>
                         </Ellipse.RenderTransform>
                     </Ellipse>
-                    <TextBlock x:Name="ProcessingText" Text="Correcting..." Foreground="#E0E0E0"
-                               FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Vertical" VerticalAlignment="Center">
+                        <TextBlock x:Name="ProcessingText" Text="Correcting..." Foreground="#E0E0E0"
+                                   FontFamily="Segoe UI" FontSize="13"/>
+                        <TextBlock x:Name="ProcessingDetailText" Foreground="#666666"
+                                   FontFamily="Segoe UI" FontSize="10" Margin="0,4,0,0"/>
+                    </StackPanel>
                 </StackPanel>
 
                 <!-- Result state: diff + buttons + mode selector -->
@@ -310,20 +314,26 @@
                     </Grid.RowDefinitions>
 
                     <!-- Header row: status -->
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,8">
-                        <Ellipse x:Name="InlineSpinner" Width="14" Height="14"
-                                 Stroke="#6C63FF" StrokeThickness="2"
-                                 StrokeDashArray="3 2" Margin="0,0,8,0"
-                                 VerticalAlignment="Center" Visibility="Collapsed">
-                            <Ellipse.RenderTransform>
-                                <RotateTransform CenterX="7" CenterY="7"/>
-                            </Ellipse.RenderTransform>
-                        </Ellipse>
-                        <TextBlock x:Name="StatusIcon" Text="&#x2713;" Foreground="#4ADE80"
-                                   FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                        <TextBlock x:Name="StatusText" Text="" Foreground="#E0E0E0"
-                                   FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"
-                                   TextWrapping="Wrap" MaxWidth="340"/>
+                    <StackPanel Grid.Row="0">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <Ellipse x:Name="InlineSpinner" Width="14" Height="14"
+                                     Stroke="#6C63FF" StrokeThickness="2"
+                                     StrokeDashArray="3 2" Margin="0,0,8,0"
+                                     VerticalAlignment="Center" Visibility="Collapsed">
+                                <Ellipse.RenderTransform>
+                                    <RotateTransform CenterX="7" CenterY="7"/>
+                                </Ellipse.RenderTransform>
+                            </Ellipse>
+                            <TextBlock x:Name="StatusIcon" Text="&#x2713;" Foreground="#4ADE80"
+                                       FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="StatusText" Text="" Foreground="#E0E0E0"
+                                       FontFamily="Segoe UI" FontSize="13" VerticalAlignment="Center"
+                                       TextWrapping="Wrap" MaxWidth="340"/>
+                        </StackPanel>
+                        <TextBlock x:Name="ConversationalWarning" Foreground="#FBBF24"
+                                   FontFamily="Segoe UI" FontSize="11" TextWrapping="Wrap"
+                                   Margin="0,0,0,6" Visibility="Collapsed"
+                                   Text="&#x26A0; The model may have replied conversationally — check the result before applying."/>
                     </StackPanel>
 
                     <!-- Diff tabs: Corrected (editable apply target) | Diff (display-only) | Original -->
@@ -384,14 +394,27 @@
                                 Style="{StaticResource ActionButton}" Click="OnCancelClick"/>
                     </StackPanel>
 
-                    <!-- Mode selector row -->
-                    <DockPanel Grid.Row="3" Margin="0,4,0,0">
-                        <TextBlock Text="Mode:" Foreground="#888" FontSize="11"
-                                   FontFamily="Segoe UI" VerticalAlignment="Center"
-                                   Margin="0,0,6,0" DockPanel.Dock="Left"/>
-                        <ComboBox x:Name="ModeBox" Style="{StaticResource OverlayComboBox}"
-                                  SelectionChanged="OnModeChanged"/>
-                    </DockPanel>
+                    <!-- Mode + provider selector row -->
+                    <Grid Grid.Row="3" Margin="0,4,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <DockPanel Grid.Column="0" Margin="0,0,4,0">
+                            <TextBlock Text="Mode:" Foreground="#888" FontSize="11"
+                                       FontFamily="Segoe UI" VerticalAlignment="Center"
+                                       Margin="0,0,6,0" DockPanel.Dock="Left"/>
+                            <ComboBox x:Name="ModeBox" Style="{StaticResource OverlayComboBox}"
+                                      SelectionChanged="OnModeChanged"/>
+                        </DockPanel>
+                        <DockPanel Grid.Column="1" Margin="4,0,0,0">
+                            <TextBlock Text="Via:" Foreground="#888" FontSize="11"
+                                       FontFamily="Segoe UI" VerticalAlignment="Center"
+                                       Margin="0,0,6,0" DockPanel.Dock="Left"/>
+                            <ComboBox x:Name="ProviderBox" Style="{StaticResource OverlayComboBox}"
+                                      SelectionChanged="OnProviderChanged"/>
+                        </DockPanel>
+                    </Grid>
 
                     <!-- Auto-apply countdown -->
                     <TextBlock x:Name="CountdownText" Grid.Row="4" Foreground="#666666"

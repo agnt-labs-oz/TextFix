@@ -14,13 +14,32 @@ public static class CostEstimator
         ["claude-sonnet-4-5-20250929"] = new(3m, 15m),
         ["claude-sonnet-4-6"] = new(3m, 15m),
         ["claude-opus-4-6"] = new(15m, 75m),
+
+        // Source: https://developers.openai.com/api/docs/pricing — openai.com/api/pricing
+        // blocks automated fetches (403), so rates were taken from the developer docs and
+        // cross-checked against third-party trackers on 2026-08-02. Refresh when the model
+        // list changes, and re-verify rather than trusting these figures indefinitely.
+        ["gpt-4o-mini"] = new(0.15m, 0.6m),
+        ["gpt-4o"] = new(2.5m, 10m),
     };
 
     // Mid-range fallback so unknown/future models neither under- nor over-estimate wildly.
     private static readonly Rate Fallback = new(3m, 15m);
 
-    public static decimal Estimate(string model, int inputTokens, int outputTokens)
+    /// <summary>
+    /// Local inference is free regardless of model name — the flag wins over any
+    /// rate-table match, since a local server can serve a cloud model's name.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="isLocal"/> is deliberately NOT optional. It used to have a
+    /// convenience overload defaulting to false, and a call site kept using it after the
+    /// flag was introduced — so local corrections still accrued cost at the mid-range
+    /// fallback rate. Requiring the argument makes the compiler find every call site.
+    /// </remarks>
+    public static decimal Estimate(string model, int inputTokens, int outputTokens, bool isLocal)
     {
+        if (isLocal) return 0m;
+
         var rate = Rates.GetValueOrDefault(model ?? "", Fallback);
         return inputTokens * rate.InputPerMillion / 1_000_000m
              + outputTokens * rate.OutputPerMillion / 1_000_000m;
