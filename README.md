@@ -102,7 +102,18 @@ No API key, no per-token cost, and your text never leaves the machine.
 3. In TextFix **Settings**, choose **Ollama (local)**. The base URL is prefilled as `http://localhost:11434/v1` and the API key field disappears — Ollama doesn't use one.
 4. Click **↻** to load your pulled models, pick one, then **Test connection** to confirm.
 
-The first correction after starting Ollama is slower — the model has to load into memory, which can take 10–20 seconds. The overlay shows a running timer and the time budget so you can tell loading from hanging. Later corrections are fast.
+The first correction after starting Ollama is slower — the model has to load into memory. The overlay shows a running timer and the time budget so you can tell loading from hanging. Later corrections are faster.
+
+**Model size matters far more than you'd expect, and a GPU matters more still.** Measured on a 32 GB CPU-only machine (no GPU), correcting the same one-sentence selection:
+
+| Model | Cold start | Warm | Quality |
+|---|---|---|---|
+| `llama3.2:3b` | 6s | ~2s | usable, but sometimes adds stray markup or emoji |
+| `gemma4:26b` | 84s | 29–58s | noticeably better, but too slow to be practical |
+
+On that machine `gemma4:26b` ran at **100% CPU** and could not finish a 1,000-character paragraph inside the 300-second budget, while `llama3.2:3b` managed the same paragraph in 26 seconds.
+
+The rule of thumb: **with a GPU, a 7B–14B model is the sweet spot. Without one, stay at 3B and expect the occasional rough edit** — or use a hosted provider, which is what the multi-provider switcher is for. You can keep Ollama configured and flip to Anthropic from the overlay's *Via* dropdown whenever you want a better result.
 
 ### Custom endpoints
 

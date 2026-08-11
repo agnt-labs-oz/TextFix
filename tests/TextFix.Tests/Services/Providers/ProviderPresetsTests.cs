@@ -52,7 +52,10 @@ public class ProviderPresetsTests
     {
         var p = ProviderPresets.Get(ProviderPresets.OllamaId);
         Assert.Equal(KeyRequirement.None, p.Key);
-        Assert.True(p.TimeoutSeconds >= 120, "cold model load can take 10-20s before first token");
+        // Measured on a CPU-only machine: a 3B model needs ~130s for a MaxTextLength
+        // selection, so anything at or under that accepts input it cannot finish.
+        Assert.True(p.TimeoutSeconds >= 300,
+            "local inference must cover a full-length selection without a GPU");
         Assert.Equal("http://localhost:11434/v1", p.BaseUrl);
     }
 
@@ -89,11 +92,11 @@ public class ProviderPresetsTests
     [InlineData("anthropic", "Anthropic", "", KeyRequirement.Required,
         "claude-haiku-4-5-20251001", 10, "", false)]
     [InlineData("ollama", "Ollama (local)", "http://localhost:11434/v1", KeyRequirement.None,
-        "", 120, "max_tokens", true)]
+        "", 300, "max_tokens", true)]
     [InlineData("openai", "OpenAI", "https://api.openai.com/v1", KeyRequirement.Required,
         "gpt-4o-mini", 30, "max_completion_tokens", true)]
     [InlineData("custom", "Custom (OpenAI-compatible)", "", KeyRequirement.Optional,
-        "", 120, "max_tokens", true)]
+        "", 300, "max_tokens", true)]
     public void Preset_HasExactSpecifiedValues(
         string id, string displayName, string baseUrl, KeyRequirement key,
         string defaultModel, int timeoutSeconds, string tokenParam, bool isOpenAiCompatible)
