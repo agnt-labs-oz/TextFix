@@ -685,7 +685,7 @@ public partial class App : Application
         if (_correctionService is null) return;
 
         var result = System.Windows.MessageBox.Show(
-            "Erase all stored correction history? This also resets the today/total counters and session cost.",
+            HistoryWipeWarning,
             "TextFix — Clear history",
             MessageBoxButton.OKCancel,
             MessageBoxImage.Warning,
@@ -693,13 +693,35 @@ public partial class App : Application
         if (result != MessageBoxResult.OK) return;
 
         _correctionService.History.Clear();
-        await _correctionService.History.SaveAsync();
+        try
+        {
+            await _correctionService.History.SaveAsync();
+            if (_statsTracker is not null)
+                await _statsTracker.ClearAsync();
+        }
+        catch (Exception ex)
+        {
+            // Never report a wipe that did not happen.
+            LogError(ex);
+            System.Windows.MessageBox.Show(
+                $"History could not be fully erased: {ex.Message}",
+                "TextFix", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
         RefreshHistoryMenu();
     }
 
+    /// <summary>
+    /// Shared by the tray and Settings wipe prompts, so the two cannot drift into
+    /// promising different things about the same action.
+    /// </summary>
+    internal const string HistoryWipeWarning =
+        "Erase all stored correction history?\n\n"
+        + "This also clears the today/total counters, the session cost, and the lifetime "
+        + "statistics shown in About TextFix. It cannot be undone.";
+
     private async void OpenSettings()
     {
-        var window = new SettingsWindow(_settings, _correctionService?.History);
+        var window = new SettingsWindow(_settings, _correctionService?.History, _statsTracker);
         window.ShowDialog();
         if (window.SettingsChanged)
         {

@@ -59,6 +59,29 @@ public sealed class StatsTracker
         });
     }
 
+    /// <summary>
+    /// Deletes the stats file, resetting every lifetime figure the About window shows.
+    /// </summary>
+    /// <remarks>
+    /// "Clear history" used to wipe <see cref="CorrectionHistory"/> and stop there, so
+    /// this file survived — and the About window went on reporting every correction the
+    /// user had just asked to erase. The entries hold no correction text, only lengths,
+    /// modes, models and timestamps, but that is still a behavioural record and the
+    /// wipe is advertised as covering it.
+    ///
+    /// Unlike <see cref="RecordAsync"/>, failure here is NOT swallowed. A stats line
+    /// that fails to write is a lost data point; a wipe that silently fails leaves the
+    /// user believing data is gone when it is not.
+    /// </remarks>
+    public Task ClearAsync() => Task.Run(() =>
+    {
+        lock (_gate)
+        {
+            if (File.Exists(_path))
+                File.Delete(_path);
+        }
+    });
+
     public async Task<StatsAggregate> AggregateAsync()
     {
         if (!File.Exists(_path))

@@ -20,6 +20,54 @@ public class StatsTrackerTests : IDisposable
         try { Directory.Delete(Path.GetDirectoryName(_path)!, true); } catch { /* best effort */ }
     }
 
+    private static CorrectionResult Sample(string mode = "Fix errors") => new()
+    {
+        OriginalText = "hello wrld",
+        CorrectedText = "hello world",
+        ModeName = mode,
+        Model = "claude-haiku-4-5-20251001",
+        InputTokens = 10,
+        OutputTokens = 5,
+    };
+
+    [Fact]
+    public async Task ClearAsync_ResetsEveryLifetimeFigure()
+    {
+        // Regression: "Clear history" wiped CorrectionHistory and stopped there, so the
+        // About window went on reporting every correction the user had just erased.
+        var tracker = new StatsTracker(_path);
+        await tracker.RecordAsync(Sample());
+        await tracker.RecordAsync(Sample("Professional"));
+        Assert.Equal(2, (await tracker.AggregateAsync()).LifetimeCorrections);
+
+        await tracker.ClearAsync();
+
+        var agg = await tracker.AggregateAsync();
+        Assert.Equal(0, agg.LifetimeCorrections);
+        Assert.Empty(agg.PerMode);
+        Assert.Equal(0m, agg.MonthCostUsd);
+        Assert.False(File.Exists(_path));
+    }
+
+    [Fact]
+    public async Task ClearAsync_OnAFreshInstall_DoesNotThrow()
+    {
+        // Nothing recorded yet, so there is no file to delete.
+        await new StatsTracker(_path).ClearAsync();
+    }
+
+    [Fact]
+    public async Task RecordAsync_AfterClear_StartsAgainFromZero()
+    {
+        var tracker = new StatsTracker(_path);
+        await tracker.RecordAsync(Sample());
+        await tracker.ClearAsync();
+
+        await tracker.RecordAsync(Sample());
+
+        Assert.Equal(1, (await tracker.AggregateAsync()).LifetimeCorrections);
+    }
+
     [Fact]
     public async Task RecordAsync_AppendsOneJsonLine()
     {

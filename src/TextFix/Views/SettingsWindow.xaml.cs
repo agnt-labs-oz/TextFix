@@ -12,16 +12,19 @@ public partial class SettingsWindow : Window
 {
     private readonly AppSettings _settings;
     private readonly CorrectionHistory? _history;
+    private readonly StatsTracker? _statsTracker;
     private bool _keyVisible;
 
     public bool SettingsChanged { get; private set; }
     public bool HistoryCleared { get; private set; }
 
-    public SettingsWindow(AppSettings settings, CorrectionHistory? history = null)
+    public SettingsWindow(
+        AppSettings settings, CorrectionHistory? history = null, StatsTracker? statsTracker = null)
     {
         InitializeComponent();
         _settings = settings;
         _history = history;
+        _statsTracker = statsTracker;
 
         HotkeyBox.Text = settings.Hotkey;
 
@@ -52,7 +55,7 @@ public partial class SettingsWindow : Window
         if (_history is null) return;
 
         var confirm = WpfMessageBox.Show(
-            "Erase all stored correction history? This also resets the today/total counters and session cost.",
+            App.HistoryWipeWarning,
             "TextFix — Clear history",
             MessageBoxButton.OKCancel,
             MessageBoxImage.Warning,
@@ -63,14 +66,23 @@ public partial class SettingsWindow : Window
         try
         {
             await _history.SaveAsync();
+            // Lifetime stats live in their own file. Wiping only the history left the
+            // About window still reporting every correction the user just erased.
+            if (_statsTracker is not null)
+                await _statsTracker.ClearAsync();
         }
         catch (Exception ex)
         {
-            WpfMessageBox.Show($"History cleared in memory but could not write to disk: {ex.Message}",
+            // Say what survived. "History cleared" over a failed wipe is the worse bug.
+            WpfMessageBox.Show($"History could not be fully erased: {ex.Message}",
                 "TextFix", MessageBoxButton.OK, MessageBoxImage.Warning);
+            HistoryCleared = true;
+            HistoryStatusText.Text = "History partly cleared — see the warning.";
+            HistoryStatusText.Visibility = Visibility.Visible;
+            return;
         }
         HistoryCleared = true;
-        HistoryStatusText.Text = "History cleared.";
+        HistoryStatusText.Text = "History and lifetime statistics cleared.";
         HistoryStatusText.Visibility = Visibility.Visible;
     }
 
