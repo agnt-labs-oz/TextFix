@@ -30,15 +30,72 @@ public static class ResponseSanitizer
         "as an ai", "i'd be happy", "i would be happy",
     ];
 
-    public static string Strip(string? raw)
+    /// <summary>
+    /// Tags this app itself puts in front of the model — <c>&lt;text&gt;</c> from
+    /// <see cref="PromptTemplates.UserMessage"/> and <c>&lt;result&gt;</c> from the
+    /// Anthropic prefill. Small models routinely echo the wrapper they were shown.
+    /// </summary>
+    private static readonly string[] WrapperTags = ["text", "result"];
+
+    /// <param name="originalText">
+    /// The text being corrected. Used only to tell our scaffolding apart from the
+    /// user's own content — see <see cref="StripWrapperTags"/>. Optional, but pass it
+    /// whenever it is available.
+    /// </param>
+    public static string Strip(string? raw, string? originalText = null)
     {
         if (string.IsNullOrWhiteSpace(raw)) return "";
 
         var text = raw.Trim();
         text = StripFences(text);
+        text = StripWrapperTags(text, originalText);
         text = StripLeadIn(text);
         text = StripWrappingQuotes(text);
         return text.Trim();
+    }
+
+    /// <summary>
+    /// Removes a <c>&lt;text&gt;</c>/<c>&lt;result&gt;</c> wrapper the model copied
+    /// from the prompt.
+    /// </summary>
+    /// <remarks>
+    /// We wrap the input in <c>&lt;text&gt;…&lt;/text&gt;</c> to delimit it, and a 3B
+    /// local model will happily hand the delimiters back — the very first real Ollama
+    /// correction returned "&lt;text&gt;\nThe quick brown fox…\n&lt;/text&gt;". Teaching
+    /// the model a tag obliges us to handle getting it back.
+    ///
+    /// The guard that matters: if the user's own selection already started with the tag
+    /// — they are correcting XML that happens to contain a <c>&lt;text&gt;</c> element —
+    /// then those tags are their content, and stripping them would silently corrupt the
+    /// document. This class must never delete user content, so in that case we leave the
+    /// response alone and accept the rarer cosmetic failure.
+    ///
+    /// Open and close are handled independently: a response truncated at the token limit
+    /// can carry the opening tag with no closing one.
+    /// </remarks>
+    private static string StripWrapperTags(string text, string? originalText)
+    {
+        var original = originalText?.TrimStart();
+
+        foreach (var tag in WrapperTags)
+        {
+            var open = $"<{tag}>";
+            var close = $"</{tag}>";
+
+            if (original is not null
+                && original.StartsWith(open, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var hadOpen = text.StartsWith(open, StringComparison.OrdinalIgnoreCase);
+            var hadClose = text.EndsWith(close, StringComparison.OrdinalIgnoreCase);
+            if (!hadOpen && !hadClose) continue;
+
+            if (hadOpen) text = text[open.Length..];
+            if (hadClose) text = text[..^close.Length];
+            text = text.Trim();
+        }
+
+        return text;
     }
 
     private static string StripFences(string text)

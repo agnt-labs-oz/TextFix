@@ -115,7 +115,9 @@ public class OpenAiCompatibleProvider : IAiProvider
             if (string.IsNullOrWhiteSpace(content))
                 return Fail(text, "The model returned an empty response — try again.");
 
-            var corrected = ResponseSanitizer.Strip(content);
+            // Pass the original so the sanitizer can tell our <text> scaffolding apart
+            // from a user genuinely correcting XML that contains a <text> element.
+            var corrected = ResponseSanitizer.Strip(content, text);
             if (string.IsNullOrWhiteSpace(corrected))
                 return Fail(text, "The model returned an empty response — try again.");
 

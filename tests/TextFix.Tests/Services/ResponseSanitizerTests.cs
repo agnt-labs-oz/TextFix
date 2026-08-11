@@ -96,4 +96,58 @@ public class ResponseSanitizerTests
     {
         Assert.False(ResponseSanitizer.LooksConversational(text));
     }
+
+    [Fact]
+    public void Strip_RemovesTheTextWrapperTheModelCopiedFromThePrompt()
+    {
+        // Verbatim from the first real Ollama correction: llama3.2:3b handed back the
+        // <text> delimiters that PromptTemplates.UserMessage puts around the input.
+        const string raw = "<text>\nThe quick brown fox jumps over the lazy dog\n</text>";
+
+        Assert.Equal(
+            "The quick brown fox jumps over the lazy dog",
+            ResponseSanitizer.Strip(raw, "teh quick brown fox jumpd over teh lazy dog"));
+    }
+
+    [Theory]
+    [InlineData("<text>hello world</text>", "hello world")]
+    [InlineData("<text>hello world", "hello world")]        // truncated at the token limit
+    [InlineData("hello world</text>", "hello world")]
+    [InlineData("<result>hello world</result>", "hello world")] // the Anthropic prefill tag
+    [InlineData("<TEXT>hello world</TEXT>", "hello world")]     // models vary the casing
+    public void Strip_RemovesWrapperTags(string raw, string expected)
+    {
+        Assert.Equal(expected, ResponseSanitizer.Strip(raw));
+    }
+
+    [Fact]
+    public void Strip_KeepsWrapperTags_WhenTheUserWasCorrectingXml()
+    {
+        // The user selected an XML fragment that genuinely contains a <text> element.
+        // Those tags are their content, and deleting them would corrupt the document —
+        // the one thing this class must never do.
+        const string original = "<text>teh quick brown fox</text>";
+        const string raw = "<text>the quick brown fox</text>";
+
+        Assert.Equal(raw, ResponseSanitizer.Strip(raw, original));
+    }
+
+    [Fact]
+    public void Strip_LeavesInnerTagsAlone()
+    {
+        // Only a wrapper enclosing the whole response is scaffolding.
+        const string raw = "Set the <text> element before the </text> closing tag.";
+
+        Assert.Equal(raw, ResponseSanitizer.Strip(raw));
+    }
+
+    [Fact]
+    public void Strip_RemovesWrapperInsideCodeFences()
+    {
+        // A model can do both at once; fences are stripped first, so the tag beneath
+        // must still be caught.
+        const string raw = "```\n<text>\nhello world\n</text>\n```";
+
+        Assert.Equal("hello world", ResponseSanitizer.Strip(raw));
+    }
 }
