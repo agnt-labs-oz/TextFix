@@ -109,36 +109,39 @@ public class ResponseSanitizerTests
             ResponseSanitizer.Strip(raw, "teh quick brown fox jumpd over teh lazy dog"));
     }
 
+    [Fact]
+    public void Strip_RemovesTheClosingTag_WhenTheModelTrailsSomethingAfterIt()
+    {
+        // Verbatim from a live run. An earlier fix only unwrapped a tag pair enclosing
+        // the whole response, and this slipped through: the model put an emoji after the
+        // closing tag, so the string no longer ended with it.
+        const string raw = "The quick brown fox jumps over the lazy dog\n</text> 🙂";
+
+        Assert.Equal(
+            "The quick brown fox jumps over the lazy dog\n 🙂",
+            ResponseSanitizer.Strip(raw, "teh quick brown fox jumpd over teh lazy dog"));
+    }
+
     [Theory]
     [InlineData("<text>hello world</text>", "hello world")]
     [InlineData("<text>hello world", "hello world")]        // truncated at the token limit
     [InlineData("hello world</text>", "hello world")]
     [InlineData("<result>hello world</result>", "hello world")] // the Anthropic prefill tag
     [InlineData("<TEXT>hello world</TEXT>", "hello world")]     // models vary the casing
+    [InlineData("<text>hello</text> world", "hello world")]     // tag mid-response
     public void Strip_RemovesWrapperTags(string raw, string expected)
     {
         Assert.Equal(expected, ResponseSanitizer.Strip(raw));
     }
 
-    [Fact]
-    public void Strip_KeepsWrapperTags_WhenTheUserWasCorrectingXml()
+    [Theory]
+    // The user selected content that genuinely uses the tag — an XML fragment, or prose
+    // about XML. Those tags are theirs, and deleting them would corrupt the document.
+    [InlineData("<text>teh quick brown fox</text>", "<text>the quick brown fox</text>")]
+    [InlineData("Set the <text> elemnt before </text>.", "Set the <text> element before </text>.")]
+    public void Strip_KeepsWrapperTags_WhenTheUserWasCorrectingXml(string original, string raw)
     {
-        // The user selected an XML fragment that genuinely contains a <text> element.
-        // Those tags are their content, and deleting them would corrupt the document —
-        // the one thing this class must never do.
-        const string original = "<text>teh quick brown fox</text>";
-        const string raw = "<text>the quick brown fox</text>";
-
         Assert.Equal(raw, ResponseSanitizer.Strip(raw, original));
-    }
-
-    [Fact]
-    public void Strip_LeavesInnerTagsAlone()
-    {
-        // Only a wrapper enclosing the whole response is scaffolding.
-        const string raw = "Set the <text> element before the </text> closing tag.";
-
-        Assert.Equal(raw, ResponseSanitizer.Strip(raw));
     }
 
     [Fact]

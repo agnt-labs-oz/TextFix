@@ -64,38 +64,36 @@ public static class ResponseSanitizer
     /// correction returned "&lt;text&gt;\nThe quick brown fox…\n&lt;/text&gt;". Teaching
     /// the model a tag obliges us to handle getting it back.
     ///
-    /// The guard that matters: if the user's own selection already started with the tag
-    /// — they are correcting XML that happens to contain a <c>&lt;text&gt;</c> element —
-    /// then those tags are their content, and stripping them would silently corrupt the
-    /// document. This class must never delete user content, so in that case we leave the
-    /// response alone and accept the rarer cosmetic failure.
+    /// The guard that matters: if the user's own selection used the tag — they are
+    /// correcting XML that happens to contain a <c>&lt;text&gt;</c> element — then those
+    /// tags are their content, and stripping them would silently corrupt the document.
+    /// This class must never delete user content, so in that case we leave the response
+    /// alone and accept the rarer cosmetic failure.
     ///
-    /// Open and close are handled independently: a response truncated at the token limit
-    /// can carry the opening tag with no closing one.
+    /// Otherwise every occurrence goes, wherever it landed. An earlier version only
+    /// unwrapped a tag pair enclosing the whole response, and a real reply slipped
+    /// straight through it: "…over the lazy dog\n&lt;/text&gt; 🙂" — the model trailed an
+    /// emoji after the closing tag, so the string no longer ended with it. These are
+    /// delimiters this app invented; if the user's text did not contain them, anything
+    /// coming back is echoed scaffolding no matter where it sits.
     /// </remarks>
     private static string StripWrapperTags(string text, string? originalText)
     {
-        var original = originalText?.TrimStart();
-
         foreach (var tag in WrapperTags)
         {
             var open = $"<{tag}>";
             var close = $"</{tag}>";
 
-            if (original is not null
-                && original.StartsWith(open, StringComparison.OrdinalIgnoreCase))
+            if (originalText is not null
+                && (originalText.Contains(open, StringComparison.OrdinalIgnoreCase)
+                    || originalText.Contains(close, StringComparison.OrdinalIgnoreCase)))
                 continue;
 
-            var hadOpen = text.StartsWith(open, StringComparison.OrdinalIgnoreCase);
-            var hadClose = text.EndsWith(close, StringComparison.OrdinalIgnoreCase);
-            if (!hadOpen && !hadClose) continue;
-
-            if (hadOpen) text = text[open.Length..];
-            if (hadClose) text = text[..^close.Length];
-            text = text.Trim();
+            text = text.Replace(open, "", StringComparison.OrdinalIgnoreCase);
+            text = text.Replace(close, "", StringComparison.OrdinalIgnoreCase);
         }
 
-        return text;
+        return text.Trim();
     }
 
     private static string StripFences(string text)
