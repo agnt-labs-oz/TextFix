@@ -182,7 +182,7 @@ TextFix is free and MIT-licensed. If it saves you time, you can leave a tip:
 
 ### Shipped
 
-**Unreleased** — In-app Ollama setup: Settings → Ollama → *Set up Ollama…* downloads the official installer, verifies its digital signature is from *Ollama Inc.* before running it, and pulls a starter model — no terminal required.
+**v0.11** — In-app Ollama setup: Settings → Ollama → *Set up Ollama…* downloads the official installer, verifies its digital signature is from *Ollama Inc.* before running it, and pulls a starter model — no terminal required. Also: a project page at [agnt-labs-oz.github.io/TextFix](https://agnt-labs-oz.github.io/TextFix/).
 
 **v0.10** — Multiple AI providers: Anthropic, local models via Ollama, OpenAI, and any OpenAI-compatible endpoint (LM Studio, llama.cpp, OpenRouter, Groq, a corporate gateway). Per-provider base URL, model and key, switchable from the overlay's "Via" dropdown or the tray. Connection test and model discovery in Settings. Elapsed-time counter during correction. Local inference correctly costed at zero.
 
