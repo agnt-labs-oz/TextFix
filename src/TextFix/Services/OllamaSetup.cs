@@ -40,6 +40,27 @@ public class OllamaSetup
     /// <summary>Shown before download starts; the real size is only known at response time.</summary>
     public const string ApproxDownloadSize = "about 1.5 GB";
 
+    /// <summary>
+    /// The models the setup dialog offers, in preference order — sized for text
+    /// correction, measured usable on CPU-only hardware (llama3.2:3b) or worth the
+    /// download on a GPU box (qwen2.5:7b).
+    /// </summary>
+    public static readonly string[] RecommendedModels = ["llama3.2:3b", "qwen2.5:7b"];
+
+    /// <summary>
+    /// Which already-present model the dialog should treat as ready.
+    /// </summary>
+    /// <remarks>
+    /// Not simply the first: <c>/api/tags</c> lists newest-first, and on this project's
+    /// own dev machine that was a 26B model measured UNUSABLE on its CPU-only hardware —
+    /// auto-filling that into an empty model box would hand the user a provider that
+    /// times out on a paragraph. A recommended model wins whenever one is present.
+    /// </remarks>
+    public static string? ChooseReadyModel(IReadOnlyList<string> available) =>
+        available.Count == 0
+            ? null
+            : RecommendedModels.FirstOrDefault(available.Contains) ?? available[0];
+
     private static readonly HttpClient SharedClient = new() { Timeout = Timeout.InfiniteTimeSpan };
 
     private readonly HttpClient _http;

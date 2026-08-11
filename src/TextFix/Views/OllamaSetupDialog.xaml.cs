@@ -30,7 +30,15 @@ public partial class OllamaSetupDialog : Window
     {
         InitializeComponent();
         _setup = new OllamaSetup(effectiveBaseUrl);
-        Loaded += async (_, _) => await DetectAsync();
+        // The try/catch mirrors OnAction's: an exception escaping an async void event
+        // handler is swallowed by the app's global handler, which here would leave the
+        // dialog stuck on "Checking for Ollama…" with no path forward. (Reachable:
+        // the server can die between the version probe and the tags call.)
+        Loaded += async (_, _) =>
+        {
+            try { await DetectAsync(); }
+            catch (Exception ex) { Fail(ex.Message); }
+        };
     }
 
     private async Task DetectAsync()
@@ -130,6 +138,11 @@ public partial class OllamaSetupDialog : Window
                 AuthenticodeVerifier.Verify(installerPath, OllamaSetup.RequiredSignerCn));
             if (!verify.IsValid)
             {
+                // Delete BEFORE the early return — this branch exits the try normally,
+                // so the catch below never runs for it. An unverifiable installer left
+                // in %TEMP% while the UI claims deletion would be the exact
+                // claim-vs-code mismatch the verifier exists to prevent.
+                TryDelete(installerPath);
                 Fail($"The downloaded installer failed verification and was deleted. {verify.Detail}");
                 return;
             }
@@ -161,7 +174,7 @@ public partial class OllamaSetupDialog : Window
         var models = await _setup.ListLocalModelsAsync();
         if (models.Count > 0)
         {
-            ReadyModel = models[0];
+            ReadyModel = OllamaSetup.ChooseReadyModel(models);
             Finish($"Ollama is ready — {models.Count} model(s) available.");
             return;
         }

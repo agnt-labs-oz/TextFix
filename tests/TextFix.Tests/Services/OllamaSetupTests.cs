@@ -30,6 +30,16 @@ public class OllamaSetupTests
     private static OllamaSetup Make(StubHttpMessageHandler handler) =>
         new("http://localhost:11434/v1", handler);
 
+    /// <summary>
+    /// Reports on the calling thread. <see cref="Progress{T}"/> posts to a sync
+    /// context asynchronously, which forces tests into arbitrary Task.Delay drains —
+    /// a latent flake this avoids entirely.
+    /// </summary>
+    private sealed class SyncProgress<T>(Action<T> handler) : IProgress<T>
+    {
+        public void Report(T value) => handler(value);
+    }
+
     [Theory]
     [InlineData("http://localhost:11434/v1", "http://localhost:11434")]
     [InlineData("http://localhost:11434/v1/", "http://localhost:11434")]
@@ -40,6 +50,47 @@ public class OllamaSetupTests
         // The provider's BaseUrl points at /v1; model management only exists at the
         // root. A user who moved Ollama to another port must have THAT server managed.
         Assert.Equal(expectedRoot, OllamaSetup.ApiRootFrom(baseUrl));
+    }
+
+    [Theory]
+    // /api/tags lists newest-first — on the dev machine that put a 26B model measured
+    // unusable on CPU ahead of the 3B that works. A recommended model must win.
+    [InlineData(new[] { "gemma4:26b", "llama3.2:3b" }, "llama3.2:3b")]
+    [InlineData(new[] { "gemma4:26b", "qwen2.5:7b" }, "qwen2.5:7b")]
+    [InlineData(new[] { "llama3.2:3b", "qwen2.5:7b" }, "llama3.2:3b")] // preference order, not list order
+    [InlineData(new[] { "mistral:7b" }, "mistral:7b")]                 // no recommended model: take what exists
+    public void ChooseReadyModel_PrefersARecommendedModel(string[] available, string expected)
+    {
+        Assert.Equal(expected, OllamaSetup.ChooseReadyModel(available));
+    }
+
+    [Fact]
+    public void ChooseReadyModel_NullWhenNothingInstalled()
+    {
+        Assert.Null(OllamaSetup.ChooseReadyModel([]));
+    }
+
+    [Fact]
+    public void ChooseReadyModel_PrefersARecommendedModel_OverTagsOrder()
+    {
+        // /api/tags lists newest-first. On this project's own dev machine that put a
+        // 26B model — measured unusable on its CPU — ahead of the 3B that works.
+        // Auto-filling by list order would hand the user a provider that times out.
+        Assert.Equal("llama3.2:3b",
+            OllamaSetup.ChooseReadyModel(["gemma4:26b", "llama3.2:3b"]));
+    }
+
+    [Fact]
+    public void ChooseReadyModel_FallsBackToTheFirstModel_WhenNothingRecommendedIsPresent()
+    {
+        // A model the user pulled themselves is still a working setup — never refuse it.
+        Assert.Equal("gemma4:26b", OllamaSetup.ChooseReadyModel(["gemma4:26b", "phi4:14b"]));
+    }
+
+    [Fact]
+    public void ChooseReadyModel_ReturnsNull_WhenNoModelsExist()
+    {
+        Assert.Null(OllamaSetup.ChooseReadyModel([]));
     }
 
     [Fact]
@@ -77,10 +128,8 @@ public class OllamaSetupTests
         var reports = new List<OllamaSetup.PullProgress>();
 
         await Make(handler).PullModelAsync(
-            "llama3.2:3b", new Progress<OllamaSetup.PullProgress>(reports.Add), CancellationToken.None);
+            "llama3.2:3b", new SyncProgress<OllamaSetup.PullProgress>(reports.Add), CancellationToken.None);
 
-        // Progress<T> posts asynchronously; drain before asserting.
-        await Task.Delay(50);
         Assert.Contains("\"model\":\"llama3.2:3b\"", handler.LastRequestBody);
         Assert.Contains(reports, r => r is { Status: "success" });
         Assert.Contains(reports, r => r.Completed == 1000000 && r.Total == 2019377376);
@@ -124,9 +173,8 @@ public class OllamaSetupTests
         try
         {
             await Make(handler).DownloadInstallerAsync(
-                dest, new Progress<(long, long)>(reports.Add), CancellationToken.None);
+                dest, new SyncProgress<(long, long)>(reports.Add), CancellationToken.None);
 
-            await Task.Delay(50); // Progress<T> posts asynchronously
             Assert.Equal(body, File.ReadAllText(dest));
             Assert.NotEmpty(reports);
             Assert.Equal(body.Length, reports[^1].Done);
