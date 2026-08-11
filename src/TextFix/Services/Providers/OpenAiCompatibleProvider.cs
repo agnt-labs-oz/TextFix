@@ -217,6 +217,14 @@ public class OpenAiCompatibleProvider : IAiProvider
         {
             HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden =>
                 "API key is invalid. Check your key in Settings.",
+            // OpenAI reports an EMPTY BALANCE as 429 ("insufficient_quota"), the same
+            // status as transient rate limiting. Telling that user "try again in a
+            // moment" is actively wrong — no amount of retrying fixes billing — so when
+            // the body says quota, quote it instead.
+            HttpStatusCode.TooManyRequests when detail is not null
+                && (detail.Contains("quota", StringComparison.OrdinalIgnoreCase)
+                    || detail.Contains("billing", StringComparison.OrdinalIgnoreCase)) =>
+                $"{_preset.DisplayName} rejected the request (429): {detail}",
             HttpStatusCode.TooManyRequests =>
                 "Rate limited — try again in a moment.",
             HttpStatusCode.NotFound when body.Contains("model", StringComparison.OrdinalIgnoreCase) =>

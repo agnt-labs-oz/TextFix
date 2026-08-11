@@ -82,7 +82,7 @@ public partial class SettingsWindow : Window
             return;
         }
         HistoryCleared = true;
-        HistoryStatusText.Text = "History and lifetime statistics cleared.";
+        HistoryStatusText.Text = "History cleared. Time-saved total kept.";
         HistoryStatusText.Visibility = Visibility.Visible;
     }
 

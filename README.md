@@ -90,6 +90,16 @@ TextFix can send your text to any of four provider types. Pick one in **Settings
 | **OpenAI** | Required | Per token | GPT-4o, GPT-4o mini, o-series. |
 | **Custom** | Optional | Depends | Any OpenAI-compatible endpoint. |
 
+### Hosted providers bill the API separately
+
+Every hosted provider bills API usage separately from its chat subscription, and running out of credit is the most common "it suddenly stopped working":
+
+- **Anthropic** — a Claude Pro/Max subscription does **not** cover the API. Top up at [console.anthropic.com/settings/billing](https://console.anthropic.com/settings/billing). Out of credit reads: *"your credit balance is too low"*.
+- **OpenAI** — ChatGPT Plus does **not** cover the API. Billing lives at [platform.openai.com](https://platform.openai.com/settings/organization/billing). Out of credit reads: *"you exceeded your current quota"*.
+- **OpenRouter, Groq and other custom endpoints** — each has its own credit balance on its own dashboard.
+
+When it happens, TextFix shows the provider's own explanation in the overlay — your key and settings are fine, and nothing needs changing in the app.
+
 ### Running locally with Ollama
 
 No API key, no per-token cost, and your text never leaves the machine.

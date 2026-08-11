@@ -31,14 +31,18 @@ public class StatsTrackerTests : IDisposable
     };
 
     [Fact]
-    public async Task ClearAsync_ResetsEveryLifetimeFigure()
+    public async Task ClearAsync_ResetsCorrectionFigures_ButKeepsTimeSaved()
     {
         // Regression: "Clear history" wiped CorrectionHistory and stopped there, so the
         // About window went on reporting every correction the user had just erased.
+        // Time saved is the deliberate exception (user decision, 2026-08-11): counts and
+        // modes go with the history; the running motivational total survives.
         var tracker = new StatsTracker(_path);
         await tracker.RecordAsync(Sample());
         await tracker.RecordAsync(Sample("Professional"));
-        Assert.Equal(2, (await tracker.AggregateAsync()).LifetimeCorrections);
+        var before = await tracker.AggregateAsync();
+        Assert.Equal(2, before.LifetimeCorrections);
+        Assert.True(before.TimeSavedMinutes > 0);
 
         await tracker.ClearAsync();
 
@@ -46,7 +50,25 @@ public class StatsTrackerTests : IDisposable
         Assert.Equal(0, agg.LifetimeCorrections);
         Assert.Empty(agg.PerMode);
         Assert.Equal(0m, agg.MonthCostUsd);
-        Assert.False(File.Exists(_path));
+        Assert.Equal(before.TimeSavedMinutes, agg.TimeSavedMinutes);
+    }
+
+    [Fact]
+    public async Task ClearAsync_Twice_KeepsAccumulating_NotResetting()
+    {
+        // The carryover line from one wipe must survive the next, or a second wipe
+        // silently zeroes the total the first one promised to keep.
+        var tracker = new StatsTracker(_path);
+        await tracker.RecordAsync(Sample());
+        await tracker.ClearAsync();
+        await tracker.RecordAsync(Sample());
+        var beforeSecond = (await tracker.AggregateAsync()).TimeSavedMinutes;
+
+        await tracker.ClearAsync();
+
+        var agg = await tracker.AggregateAsync();
+        Assert.Equal(beforeSecond, agg.TimeSavedMinutes);
+        Assert.Equal(0, agg.LifetimeCorrections);
     }
 
     [Fact]

@@ -59,15 +59,24 @@ public sealed class StatsTracker
         });
     }
 
+    /// <summary>Marks a line that carries forward the time-saved total across wipes.</summary>
+    private const string CarryoverStatus = "carryover";
+
     /// <summary>
-    /// Deletes the stats file, resetting every lifetime figure the About window shows.
+    /// Wipes the lifetime record behind the About window — correction counts, per-mode
+    /// breakdown, spend — while carrying the cumulative "time saved" total forward.
     /// </summary>
     /// <remarks>
     /// "Clear history" used to wipe <see cref="CorrectionHistory"/> and stop there, so
     /// this file survived — and the About window went on reporting every correction the
-    /// user had just asked to erase. The entries hold no correction text, only lengths,
-    /// modes, models and timestamps, but that is still a behavioural record and the
-    /// wipe is advertised as covering it.
+    /// user had just asked to erase.
+    ///
+    /// Time saved is deliberately NOT wiped (user decision, 2026-08-11): counts and
+    /// per-mode stats describe *what was corrected* and go with the history; time saved
+    /// is a single running motivational total, closer to an odometer than a log. The
+    /// mechanism: the per-correction lines are replaced by ONE carryover line holding
+    /// the summed input length — no modes, no models, no timestamps of individual
+    /// corrections survive, so the behavioural record is still gone.
     ///
     /// Unlike <see cref="RecordAsync"/>, failure here is NOT swallowed. A stats line
     /// that fails to write is a lost data point; a wipe that silently fails leaves the
@@ -77,8 +86,35 @@ public sealed class StatsTracker
     {
         lock (_gate)
         {
-            if (File.Exists(_path))
+            if (!File.Exists(_path)) return;
+
+            long totalCharsIn = 0;
+            foreach (var raw in File.ReadAllLines(_path))
+            {
+                if (string.IsNullOrWhiteSpace(raw)) continue;
+                try
+                {
+                    // A previous wipe's carryover line sums in like any other, so
+                    // repeated wipes keep accumulating rather than resetting.
+                    var entry = JsonSerializer.Deserialize<StatsEntry>(raw);
+                    if (entry is not null) totalCharsIn += entry.CharsIn;
+                }
+                catch (JsonException) { /* a corrupt line carries nothing forward */ }
+            }
+
+            if (totalCharsIn <= 0)
+            {
                 File.Delete(_path);
+                return;
+            }
+
+            var carry = new StatsEntry
+            {
+                Timestamp = DateTime.UtcNow,
+                CharsIn = (int)Math.Min(totalCharsIn, int.MaxValue),
+                Status = CarryoverStatus,
+            };
+            File.WriteAllText(_path, JsonSerializer.Serialize(carry, WriteOptions) + Environment.NewLine);
         }
     });
 
@@ -101,6 +137,15 @@ public sealed class StatsTracker
             try { entry = JsonSerializer.Deserialize<StatsEntry>(raw); }
             catch { continue; }
             if (entry is null) continue;
+
+            // A carryover line preserves only the time-saved total across a history
+            // wipe. It is not a correction: it must not count toward lifetime, modes
+            // or spend, or the wipe would appear to have failed.
+            if (entry.Status == CarryoverStatus)
+            {
+                totalCharsIn += entry.CharsIn;
+                continue;
+            }
 
             lifetime++;
             totalCharsIn += entry.CharsIn;

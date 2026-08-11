@@ -219,6 +219,34 @@ public class OpenAiCompatibleProviderTests
     }
 
     [Fact]
+    public async Task CorrectAsync_EmptyBalance429_IsNotReportedAsRateLimiting()
+    {
+        // OpenAI reports an empty balance as 429 — the same status as transient rate
+        // limiting. "Try again in a moment" is actively wrong for billing: no retry
+        // fixes it, so the server's own explanation must win.
+        const string body = """
+        { "error": { "message": "You exceeded your current quota, please check your plan and billing details.", "type": "insufficient_quota" } }
+        """;
+        var provider = Make(new StubHttpMessageHandler(HttpStatusCode.TooManyRequests, body));
+
+        var result = await provider.CorrectAsync("hi there", "Fix errors.");
+
+        Assert.Contains("exceeded your current quota", result.ErrorMessage!);
+        Assert.DoesNotContain("try again in a moment", result.ErrorMessage!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task CorrectAsync_Plain429_StillReadsAsRateLimiting()
+    {
+        const string body = """{ "error": { "message": "Rate limit reached for requests" } }""";
+        var provider = Make(new StubHttpMessageHandler(HttpStatusCode.TooManyRequests, body));
+
+        var result = await provider.CorrectAsync("hi there", "Fix errors.");
+
+        Assert.Contains("Rate limited", result.ErrorMessage!);
+    }
+
+    [Fact]
     public async Task CorrectAsync_QuotesOllamasFlatErrorShape()
     {
         var provider = Make(new StubHttpMessageHandler(

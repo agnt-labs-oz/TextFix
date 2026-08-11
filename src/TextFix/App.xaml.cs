@@ -716,8 +716,9 @@ public partial class App : Application
     /// </summary>
     internal const string HistoryWipeWarning =
         "Erase all stored correction history?\n\n"
-        + "This also clears the today/total counters, the session cost, and the lifetime "
-        + "statistics shown in About TextFix. It cannot be undone.";
+        + "This also clears the today/total counters, the session cost, and the "
+        + "correction counts in About TextFix. The cumulative \"time saved\" total is "
+        + "kept. It cannot be undone.";
 
     private async void OpenSettings()
     {
