@@ -100,4 +100,48 @@ internal static partial class NativeMethods
         public uint time;
         public IntPtr dwExtraInfo;
     }
+
+    // --- Authenticode verification (WinVerifyTrust) -------------------------------
+    // Used by AuthenticodeVerifier to check the downloaded Ollama installer's embedded
+    // signature before it is ever launched. Structs are kept blittable (IntPtr for the
+    // path string, marshalled by the caller) so they work with LibraryImport.
+
+    public static readonly Guid WINTRUST_ACTION_GENERIC_VERIFY_V2 =
+        new(0x00aac56b, 0xcd44, 0x11d0, 0x8c, 0xc2, 0x00, 0xc0, 0x4f, 0xc2, 0x95, 0xee);
+
+    public const uint WTD_UI_NONE = 2;
+    public const uint WTD_REVOKE_NONE = 0;
+    public const uint WTD_CHOICE_FILE = 1;
+    public const uint WTD_STATEACTION_VERIFY = 1;
+    public const uint WTD_STATEACTION_CLOSE = 2;
+
+    [LibraryImport("wintrust.dll")]
+    public static partial int WinVerifyTrust(IntPtr hwnd, in Guid pgActionID, ref WINTRUST_DATA pWVTData);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WINTRUST_FILE_INFO
+    {
+        public uint cbStruct;
+        public IntPtr pcwszFilePath;   // LPCWSTR, allocated by the caller
+        public IntPtr hFile;
+        public IntPtr pgKnownSubject;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WINTRUST_DATA
+    {
+        public uint cbStruct;
+        public IntPtr pPolicyCallbackData;
+        public IntPtr pSIPClientData;
+        public uint dwUIChoice;
+        public uint fdwRevocationChecks;
+        public uint dwUnionChoice;
+        public IntPtr pFile;           // WINTRUST_FILE_INFO*, allocated by the caller
+        public uint dwStateAction;
+        public IntPtr hWVTStateData;
+        public IntPtr pwszURLReference;
+        public uint dwProvFlags;
+        public uint dwUIContext;
+        public IntPtr pSignatureSettings; // Win8+; null is fine, cbStruct includes it
+    }
 }

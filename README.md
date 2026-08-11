@@ -104,6 +104,10 @@ When it happens, TextFix shows the provider's own explanation in the overlay —
 
 No API key, no per-token cost, and your text never leaves the machine.
 
+**The short way:** in TextFix **Settings**, choose **Ollama (local)** and click **Set up Ollama…**. TextFix downloads the official installer from ollama.com (about 1.5 GB — it bundles runtimes for every GPU type), verifies the installer's digital signature is genuinely from *Ollama Inc.* before running it, waits for the install to finish, and downloads a starter model of your choice. If Ollama is already installed but stopped, the same button just starts it.
+
+**The manual way:**
+
 1. Install Ollama from [ollama.com](https://ollama.com).
 2. Pull a model — a small one is plenty for text correction:
    ```
@@ -178,6 +182,8 @@ TextFix is free and MIT-licensed. If it saves you time, you can leave a tip:
 
 ### Shipped
 
+**Unreleased** — In-app Ollama setup: Settings → Ollama → *Set up Ollama…* downloads the official installer, verifies its digital signature is from *Ollama Inc.* before running it, and pulls a starter model — no terminal required.
+
 **v0.10** — Multiple AI providers: Anthropic, local models via Ollama, OpenAI, and any OpenAI-compatible endpoint (LM Studio, llama.cpp, OpenRouter, Groq, a corporate gateway). Per-provider base URL, model and key, switchable from the overlay's "Via" dropdown or the tray. Connection test and model discovery in Settings. Elapsed-time counter during correction. Local inference correctly costed at zero.
 
 Also: failed corrections are now diagnosable. Every provider error is logged and the API's own explanation is shown, instead of a blanket "An unexpected error occurred" that left nothing in the log to work from.
@@ -199,7 +205,6 @@ Also: failed corrections are now diagnosable. Every provider error is logged and
 ### Planned
 
 - **Dictionary / thesaurus / inline lookup** — select a word, get a popover with definitions, synonyms, etymology, and pronunciation without leaving the app
-- **In-app Ollama setup** — download and install Ollama, and pull a first model, without leaving TextFix
 - **Google Gemini** — its API is not OpenAI-compatible, so it needs its own provider rather than a preset row
 - **Real-time auto-correction** — monitor typing and correct as you go
 - **Per-mode hotkey shortcuts** — bind a hotkey directly to a mode (e.g. Ctrl+Shift+P → Professional) to skip the mode picker

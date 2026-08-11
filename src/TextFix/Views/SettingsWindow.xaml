@@ -229,6 +229,9 @@
                 <Button x:Name="TestConnectionButton" Content="Test connection"
                         Style="{StaticResource SmallButton}" Padding="8,2"
                         Click="OnTestConnection"/>
+                <Button x:Name="SetupOllamaButton" Content="Set up Ollama…"
+                        Style="{StaticResource SmallButton}" Padding="8,2" Margin="6,0,0,0"
+                        Visibility="Collapsed" Click="OnSetupOllama"/>
                 <TextBlock x:Name="ConnectionStatusText" Margin="8,0,0,0" FontSize="11"
                            VerticalAlignment="Center" TextWrapping="Wrap"/>
             </StackPanel>

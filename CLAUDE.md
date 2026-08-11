@@ -14,7 +14,7 @@ Text can be corrected by Anthropic, a local Ollama model, OpenAI, or any OpenAI-
 A failed correction quotes the API's own explanation and always writes a log line at the default log level. See the diagnostics entries under Key Design Decisions before touching a provider's catch chain.
 
 ### Future
-Real-time auto-correction, streaming responses, an in-app Ollama setup helper, Google Gemini (its API is not OpenAI-compatible, so it needs a real provider rather than a preset row).
+Real-time auto-correction, streaming responses, Google Gemini (its API is not OpenAI-compatible, so it needs a real provider rather than a preset row), a marketing webpage.
 
 ## Tech Stack
 
@@ -41,6 +41,10 @@ App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event r
 │       ├── ApiErrorBody.cs            — Pulls the server's explanation out of an error response
 │       └── ProviderFactory.cs         — Builds the active provider, caches on a hash of its config
 ├── Services/ResponseSanitizer.cs  — Strips model preamble; flags replies that still look chatty
+├── Services/AuthenticodeVerifier.cs — WinVerifyTrust + pinned publisher CN; the gate every
+│                                    downloaded executable must pass before it may run
+├── Services/OllamaSetup.cs        — Detect/download/launch/pull I/O for the setup dialog.
+│                                    Talks to Ollama's NATIVE /api endpoints, not /v1
 ├── Services/PromptTemplates.cs    — Shared user message + the two prompt suffixes
 ├── Services/DpapiString.cs        — Protect throws on failure; Unprotect returns "" instead
 ├── Services/DiffEngine.cs         — Word-level Myers/LCS over whitespace-preserving tokens
@@ -57,6 +61,8 @@ App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event r
 │                                    Buttons, mode + provider selectors, elapsed counter, fade animation
 ├── Views/SettingsWindow.xaml      — Provider, base URL, key, model, test connection, hotkey, auto-apply
 ├── Views/CustomModeDialog.xaml    — Add / edit a user-defined correction mode
+├── Views/OllamaSetupDialog.xaml   — Detect → download → verify → install → pull state
+│                                    machine; owns the flow, OllamaSetup owns the I/O
 ├── Views/AboutWindow.xaml         — Lifetime stats, per-mode breakdown, spend estimate
 ├── Models/AppSettings.cs          — JSON persistence, ActiveProviderId, per-provider configs
 ├── Models/ProviderConfig.cs       — Per-provider BaseUrl, Model, DPAPI-encrypted key
@@ -82,6 +88,9 @@ App.xaml.cs (shell: tray icon, hotkey wiring, service lifecycle, overlay event r
 - **Teaching the model a tag obliges you to handle getting it back.** `PromptTemplates.UserMessage` wraps input in `<text>…</text>` to delimit it, and the very first real Ollama correction returned `<text>\nThe quick brown fox…\n</text>` — a 3B model handing the delimiters straight back. `ResponseSanitizer.StripWrapperTags` removes a `<text>`/`<result>` wrapper that encloses the whole response, open and close handled independently so a token-limit truncation is still caught. **The guard that matters:** if the user's own selection already started with that tag they are correcting XML, those tags are their content, and stripping them would corrupt the document — so `Strip` takes the original text and bails. Never widen this to inner tags. Adding a new delimiter to a prompt means adding it to `WrapperTags`.
 - **User data lives in TWO stores, and a wipe must clear both.** `CorrectionHistory` (`history.json`, the ring buffer behind the tray submenu and overlay panel) and `StatsTracker` (`stats.jsonl`, the lifetime aggregates behind About). "Clear history" originally cleared only the first, so About kept reporting every correction the user had just erased — while the confirm dialog claimed the counters were reset. Both wipe paths now call `StatsTracker.ClearAsync`, and both prompts share `App.HistoryWipeWarning` so they cannot drift into promising different things. Add a third store and this list grows. **One deliberate exception** (user decision, 2026-08-11): the cumulative "time saved" total survives a wipe — counts and per-mode stats describe *what was corrected* and go with the history; time saved is an odometer. `ClearAsync` implements this by rewriting the file as a single `"carryover"` line holding only the summed input length, which `AggregateAsync` folds into time saved without counting as a correction. The warning text names this exception; keep the two in step.
 - **A failed wipe must never report success.** `StatsTracker.RecordAsync` swallows its errors deliberately — a lost stats line is a lost data point. `ClearAsync` does the opposite and lets the exception out, because a user told "history cleared" over a wipe that silently failed believes data is gone when it is not.
+- **The downloaded Ollama installer is never launched except through a passed Authenticode check.** `AuthenticodeVerifier` requires both chain validity (WinVerifyTrust, VERIFY then a mandatory CLOSE call — skipping the close is the classic handle leak) and the pinned publisher CN "Ollama Inc.", extracted with `GetNameInfo` rather than a substring test on the DN. Revocation is deliberately not checked — the threat is a tampered download, not a revoked publisher; the reasoning is in the class remarks. The pinned CN was read from Ollama's real shipped binaries; if their signing identity changes, the helper fails closed and the constant needs re-verifying.
+- **A failed Ollama model pull is an `{"error":…}` line inside an HTTP 200 stream.** Captured live: a bogus model name returns status 200, a "pulling manifest" line, then the error line. `OllamaSetup.PullModelAsync` inspects every NDJSON line and also requires the terminal `{"status":"success"}` — a stream that just ends is a dropped connection, not a completed pull. Checking the status code tells you nothing here.
+- **`HttpCompletionOption.ResponseHeadersRead` on the installer download and the pull stream** — the default buffers the whole body, which for a ~1.5 GB installer is a memory balloon that stubbed tests can never catch.
 - **Never log the text being corrected.** Provider log lines carry the provider id, model, status and the server's message — never the user's content. `AppLog.FormatException` exists for the same reason at the header level: `Exception.ToString()` on HTTP-backed SDK exceptions can round-trip authorization headers into the file.
 - **One OpenAI-compatible client serves Ollama, OpenAI and custom endpoints** — they share the `/v1/chat/completions` wire format, so adding a provider is a row in `ProviderPresets`, not new code. Anthropic keeps its own SDK for the assistant-prefill trick and typed exceptions, and is the reason `IAiProvider` exists rather than one client.
 - **Timeouts are per-provider, but the two providers enforce them differently.** `OpenAiCompatibleProvider` uses a linked `CancellationTokenSource` with `CancelAfter`, because its `HttpClient` is shared and static (to avoid socket exhaustion) and so cannot carry a per-provider deadline. `AnthropicProvider` owns its `AnthropicClient` and just sets `Timeout` on it. Values come from `ProviderPreset.TimeoutSeconds`: Ollama and Custom 300s, OpenAI 30s, Anthropic 10s. **The local figure is measured, not guessed** — it was 120s on the reasoning that a cold model spends 10-20s loading, which ignored that generation itself is slow without a GPU. On a CPU-only machine `llama3.2:3b` took 26s for 1,000 characters, extrapolating to ~130s at the 5,000-character `MaxTextLength`, so the app was accepting input its own timeout could not finish. Re-measure before changing it again.
@@ -109,11 +118,11 @@ taskkill /IM TextFix.exe /F 2>/dev/null; dotnet build
 ## Testing
 
 ```bash
-dotnet test                                              # all 232 tests
+dotnet test                                              # all 247 tests
 dotnet test --filter FullyQualifiedName~AppSettingsTests  # single test class
 ```
 
-232 cases. Note that xUnit expands every `[Theory]`/`[InlineData]` pair into its own case, so counting attributes in the source undercounts — trust `dotnet test`.
+247 cases. Note that xUnit expands every `[Theory]`/`[InlineData]` pair into its own case, so counting attributes in the source undercounts — trust `dotnet test`.
 
 Covered: settings persistence, DPAPI round-trips and legacy migration; correction modes, history and results; the provider preset table and factory caching; response sanitizing; cost estimation; diffing; stats; logging; hotkey parsing.
 

@@ -266,6 +266,27 @@ public partial class SettingsWindow : Window
     private string CurrentProviderId =>
         (ProviderBox.SelectedItem as ComboBoxItem)?.Tag as string ?? ProviderPresets.AnthropicId;
 
+    private void OnSetupOllama(object sender, RoutedEventArgs e)
+    {
+        // Resolve from the live field, not the saved config: if the user has just
+        // edited the Base URL, the helper must manage THAT server. Falls back to the
+        // preset exactly as the provider would.
+        var preset = ProviderPresets.Get(ProviderPresets.OllamaId);
+        var baseUrl = BaseUrlBox.Text.Trim();
+        var effectiveUrl = string.IsNullOrWhiteSpace(baseUrl) ? preset.BaseUrl : baseUrl;
+
+        var dialog = new OllamaSetupDialog(effectiveUrl) { Owner = this };
+        if (dialog.ShowDialog() == true && dialog.ReadyModel is not null)
+        {
+            // Only fill an empty model box — a model the user chose deliberately must
+            // not be overwritten by whatever the helper happened to end up with.
+            if (string.IsNullOrWhiteSpace(ModelBox.Text))
+                ModelBox.Text = dialog.ReadyModel;
+            ConnectionStatusText.Foreground = System.Windows.Media.Brushes.MediumSeaGreen;
+            ConnectionStatusText.Text = $"Ollama is ready with {dialog.ReadyModel}.";
+        }
+    }
+
     private void SelectProvider(string id)
     {
         for (var i = 0; i < ProviderBox.Items.Count; i++)
@@ -327,6 +348,11 @@ public partial class SettingsWindow : Window
         TestConnectionPanel.Visibility = preset.IsOpenAiCompatible ? Visibility.Visible : Visibility.Collapsed;
         RefreshModelsButton.Visibility = preset.IsOpenAiCompatible ? Visibility.Visible : Visibility.Collapsed;
         ApiKeyPanel.Visibility = preset.Key == KeyRequirement.None ? Visibility.Collapsed : Visibility.Visible;
+        // The setup helper is Ollama-specific: it downloads Ollama's installer and
+        // talks to Ollama's native /api endpoints, neither of which a generic
+        // OpenAI-compatible endpoint has.
+        SetupOllamaButton.Visibility = preset.Id == ProviderPresets.OllamaId
+            ? Visibility.Visible : Visibility.Collapsed;
 
         ConnectionStatusText.Text = "";
     }
