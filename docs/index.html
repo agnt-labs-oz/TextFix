@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TextFix — fix your writing where you wrote it</title>
+<meta name="description" content="Select text in any Windows app, press one hotkey, review the diff, apply. Free, open source, and it can run fully local — your text never has to leave your machine.">
+<link rel="icon" href="textfix.ico">
+<meta property="og:title" content="TextFix — fix your writing where you wrote it">
+<meta property="og:description" content="One hotkey corrects your text in any Windows app. Bring your own AI key, or run fully local with Ollama.">
+<meta property="og:image" content="https://raw.githubusercontent.com/agnt-labs-oz/TextFix/master/docs/screenshots/overlay.png">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #17171f;
+    --surface: #1e1e2e;        /* the app's own panel color */
+    --surface-2: #26263a;
+    --ink: #e8e8f0;
+    --muted: #a9a9bc;
+    --line: #34344a;
+    --accent: #6c63ff;         /* the app's violet */
+    --accent-strong: #5b51e8;  /* button fill: white text clears 4.5:1 here */
+    --accent-text: #a59eff;    /* links on dark: ~6:1 on --bg */
+    --del: #f08a9b;
+    --ins: #8fd9a8;
+    --mono: "Cascadia Code", Consolas, ui-monospace, monospace;
+    --step: clamp(3.5rem, 9vw, 7.5rem);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Atkinson Hyperlegible", "Segoe UI", system-ui, sans-serif;
+    font-size: 1.0625rem;
+    line-height: 1.65;
+  }
+  a { color: var(--accent-text); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+  a:hover { color: #c4bfff; }
+  :focus-visible { outline: 2px solid var(--accent-text); outline-offset: 3px; border-radius: 2px; }
+  img { max-width: 100%; height: auto; display: block; }
+  h1, h2, h3 { line-height: 1.15; text-wrap: balance; margin: 0 0 0.6em; }
+  p { margin: 0 0 1em; max-width: 68ch; text-wrap: pretty; }
+
+  .wrap { max-width: 62rem; margin: 0 auto; padding: 0 clamp(1.25rem, 4vw, 2.5rem); }
+
+  /* ---------- header ---------- */
+  header {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 1.1rem clamp(1.25rem, 4vw, 2.5rem);
+    max-width: 62rem; margin: 0 auto;
+  }
+  header img { width: 22px; height: 22px; }
+  header .name { font-weight: 700; letter-spacing: 0.01em; }
+  header nav { margin-left: auto; display: flex; gap: 1.4rem; font-size: 0.95rem; }
+  header nav a { color: var(--muted); text-decoration: none; }
+  header nav a:hover { color: var(--ink); }
+
+  /* ---------- hero ---------- */
+  .hero { padding: calc(var(--step) * 0.55) 0 var(--step); }
+  .hero h1 {
+    font-size: clamp(2.1rem, 5.4vw, 3.4rem);
+    font-weight: 700;
+    letter-spacing: -0.015em;
+    max-width: 18ch;
+  }
+  .hero .lede { font-size: clamp(1.05rem, 2vw, 1.2rem); color: var(--muted); max-width: 52ch; }
+  .hero .lede strong { color: var(--ink); font-weight: 400; }
+
+  kbd {
+    font-family: var(--mono); font-size: 0.85em;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-bottom-width: 2.5px;
+    border-radius: 5px;
+    padding: 0.1em 0.5em;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+
+  .cta-row { display: flex; flex-wrap: wrap; gap: 0.8rem; align-items: center; margin: 1.8rem 0 0.7rem; }
+  .btn {
+    display: inline-block;
+    background: var(--accent-strong); color: #fff;
+    font-weight: 700; text-decoration: none;
+    padding: 0.7rem 1.35rem; border-radius: 8px;
+    transition: background 0.15s ease-out, transform 0.15s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .btn:hover { background: var(--accent); color: #fff; transform: translateY(-1px); }
+  .btn.ghost {
+    background: transparent; color: var(--ink);
+    border: 1px solid var(--line); font-weight: 400;
+  }
+  .btn.ghost:hover { background: var(--surface); transform: none; }
+  .fineprint { color: var(--muted); font-size: 0.9rem; }
+
+  /* ---------- the diff card: the product's fingerprint ---------- */
+  .demo {
+    margin-top: calc(var(--step) * 0.5);
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.7);
+    overflow: hidden;
+  }
+  .demo-head {
+    display: flex; align-items: center; gap: 0.55rem;
+    padding: 0.8rem 1.2rem;
+    border-bottom: 1px solid var(--line);
+    font-size: 0.95rem;
+  }
+  .demo-head .tick { color: var(--ins); }
+  .demo-head .tabs { margin-left: auto; display: flex; gap: 1rem; color: var(--muted); font-size: 0.85rem; }
+  .demo-head .tabs .on { color: var(--ink); border-bottom: 2px solid var(--accent); padding-bottom: 2px; }
+  .demo-body {
+    padding: 1.3rem 1.2rem 1.5rem;
+    font-family: var(--mono);
+    font-size: clamp(0.86rem, 1.8vw, 1rem);
+    line-height: 1.9;
+  }
+  .demo-body del { color: var(--del); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+  .demo-body ins { color: var(--ins); text-decoration: none; }
+  .demo-foot {
+    display: flex; gap: 0.6rem; padding: 0 1.2rem 1.2rem;
+    font-size: 0.85rem; font-family: var(--mono);
+  }
+  .demo-foot .pill { border-radius: 6px; padding: 0.35rem 0.9rem; }
+  .demo-foot .apply { background: var(--accent-strong); color: #fff; font-weight: 700; }
+  .demo-foot .cancel { background: var(--surface-2); color: var(--muted); }
+
+  /* each correction fades in, staggered — the resting state IS the full diff,
+     so no-JS, headless, and reduced-motion all see everything */
+  .fix { opacity: 0; animation: fixin 0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards; }
+  .fix:nth-of-type(1) { animation-delay: 0.7s; }
+  .fix:nth-of-type(2) { animation-delay: 1.15s; }
+  .fix:nth-of-type(3) { animation-delay: 1.6s; }
+  .fix:nth-of-type(4) { animation-delay: 2.05s; }
+  .fix:nth-of-type(5) { animation-delay: 2.5s; }
+  .demo-head .count { opacity: 0; animation: fixin 0.5s ease-out 3s forwards; }
+  @keyframes fixin { to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .fix, .demo-head .count { animation: none; opacity: 1; }
+    html { scroll-behavior: auto; }
+    .btn { transition: none; }
+  }
+
+  /* ---------- sections ---------- */
+  section { padding: calc(var(--step) * 0.8) 0; }
+  section + section { border-top: 1px solid var(--line); }
+  h2 { font-size: clamp(1.5rem, 3.2vw, 2.1rem); letter-spacing: -0.01em; }
+  .sub { color: var(--muted); max-width: 58ch; }
+
+  /* how it works — a real sequence, so numbers earn their place */
+  .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 2.2rem; margin-top: 2.4rem; }
+  .steps .n {
+    font-family: var(--mono); color: var(--accent-text);
+    font-size: 0.9rem; display: block; margin-bottom: 0.5rem;
+  }
+  .steps h3 { font-size: 1.12rem; margin-bottom: 0.35rem; }
+  .steps p { color: var(--muted); font-size: 0.97rem; margin: 0; }
+
+  /* screenshots */
+  figure { margin: 2.2rem 0 0; }
+  figure img { border: 1px solid var(--line); border-radius: 10px; }
+  figcaption { color: var(--muted); font-size: 0.9rem; margin-top: 0.8rem; max-width: 60ch; }
+
+  /* modes */
+  .modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem 2.5rem; margin-top: 2rem; padding: 0; list-style: none; }
+  .modes li { padding: 0.35rem 0; }
+  .modes b { display: block; }
+  .modes span { color: var(--muted); font-size: 0.95rem; }
+
+  /* privacy */
+  .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 2.5rem; align-items: start; margin-top: 2rem; }
+  .plain { list-style: none; padding: 0; margin: 0; }
+  .plain li { padding: 0.55rem 0; border-bottom: 1px solid var(--line); }
+  .plain li:last-child { border-bottom: 0; }
+  .plain b { font-weight: 700; }
+  .plain span { color: var(--muted); display: block; font-size: 0.95rem; }
+
+  /* footer */
+  footer {
+    border-top: 1px solid var(--line);
+    padding: 3rem 0 3.5rem;
+    color: var(--muted); font-size: 0.95rem;
+  }
+  footer .links { display: flex; flex-wrap: wrap; gap: 1.6rem; margin-top: 1rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="textfix.ico" alt="" width="22" height="22">
+  <span class="name">TextFix</span>
+  <nav aria-label="Site">
+    <a href="#how">How it works</a>
+    <a href="#private">Privacy</a>
+    <a href="https://github.com/agnt-labs-oz/TextFix">GitHub</a>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <div class="hero">
+    <h1>Fix your writing where you wrote it.</h1>
+    <p class="lede">Select text in any Windows app — Teams, Outlook, your editor, a browser —
+      press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd>, review the diff, hit Enter.
+      <strong>No copy-pasting into a chatbot and back.</strong></p>
+
+    <div class="cta-row">
+      <a class="btn" href="https://github.com/agnt-labs-oz/TextFix/releases/latest/download/TextFix-win-Setup.exe">Download for Windows</a>
+      <a class="btn ghost" href="https://github.com/agnt-labs-oz/TextFix">View the source</a>
+    </div>
+    <p class="fineprint">Free &amp; open source · MIT · Windows 10/11 · bring your own AI key, or run fully local</p>
+
+    <div class="demo" role="img" aria-label="TextFix's diff view correcting a sentence: 'teh quick brown fox jumpd over teh lazy dog' becomes 'the quick brown fox jumped over the lazy dog', with each fix shown as a red strikethrough and a green replacement.">
+      <div class="demo-head" aria-hidden="true">
+        <span class="tick">✓</span> <span>Fixed <span class="count">5 errors</span></span>
+        <span class="tabs"><span>Corrected</span> <span class="on">Diff</span> <span>Original</span></span>
+      </div>
+      <div class="demo-body" aria-hidden="true">
+        <span class="fix"><del>teh</del> <ins>the</ins></span> quick brown fox
+        <span class="fix"><del>jumpd</del> <ins>jumped</ins></span> over
+        <span class="fix"><del>teh</del> <ins>the</ins></span> lazy
+        <span class="fix"><del>dog,</del> <ins>dog</ins></span> as
+        <span class="fix"><del>evryone</del> <ins>everyone</ins></span> expected.
+      </div>
+      <div class="demo-foot" aria-hidden="true">
+        <span class="pill apply">✔ Apply (Enter)</span>
+        <span class="pill cancel">✕ Cancel (Esc)</span>
+      </div>
+    </div>
+  </div>
+
+  <section id="how">
+    <h2>Three seconds, start to finish</h2>
+    <div class="steps">
+      <div>
+        <span class="n">1</span>
+        <h3>Select</h3>
+        <p>Anywhere text is text. TextFix lives in the system tray and works inside whatever app you're already in.</p>
+      </div>
+      <div>
+        <span class="n">2</span>
+        <h3>Press the hotkey</h3>
+        <p><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Z</kbd> by default — configurable. Your selection goes to the AI you chose, with your instructions.</p>
+      </div>
+      <div>
+        <span class="n">3</span>
+        <h3>Review, then apply</h3>
+        <p>A floating overlay shows exactly what changed, word by word. Enter replaces your text; Esc keeps the original. Nothing is ever applied unseen.</p>
+      </div>
+    </div>
+
+    <figure>
+      <img src="screenshots/overlay.png" width="1191" height="766"
+           alt="TextFix correcting a Microsoft Teams message. The overlay reads 'Fixed 22 errors' and its Diff tab shows each typo struck through in red with the fix beside it in green, above Apply and Cancel buttons.">
+      <figcaption>A real correction in Microsoft Teams. The Diff tab shows every change before you commit to any of them.</figcaption>
+    </figure>
+  </section>
+
+  <section id="modes">
+    <h2>Six ways to say it — or write your own</h2>
+    <p class="sub">A mode is just the instruction the AI gets. Switch from the overlay or the tray, mid-thought.</p>
+    <ul class="modes">
+      <li><b>Fix errors</b> <span>Spelling, grammar and typos. Tone untouched.</span></li>
+      <li><b>Professional</b> <span>Polished business register for the email that matters.</span></li>
+      <li><b>Concise</b> <span>Same point, fewer words.</span></li>
+      <li><b>Friendly</b> <span>Warmer and more conversational.</span></li>
+      <li><b>Expand</b> <span>Notes become sentences; sentences become paragraphs.</span></li>
+      <li><b>Prompt enhancer</b> <span>Turns a rough ask into an effective AI prompt.</span></li>
+    </ul>
+    <p class="fineprint" style="margin-top:1.6rem">Custom modes take any system prompt you can type — translation, house style, your own voice.</p>
+  </section>
+
+  <section id="private">
+    <h2>Your text goes where you say — and nowhere else</h2>
+    <div class="split">
+      <ul class="plain">
+        <li><b>Run it fully local.</b> <span>Point TextFix at Ollama and corrections happen on your own hardware. No account, no key, no per-token cost, nothing leaves the machine — and the app can install Ollama for you.</span></li>
+        <li><b>Or bring your own key.</b> <span>Anthropic, OpenAI, or any OpenAI-compatible endpoint — LM Studio, llama.cpp, OpenRouter, Groq, a corporate gateway. Keys are encrypted with Windows DPAPI and never leave your PC.</span></li>
+        <li><b>Nothing phones home.</b> <span>No telemetry, no accounts, no middleman server. History and stats live on your disk, with a one-click wipe.</span></li>
+        <li><b>Honest about trade-offs.</b> <span>Cloud models correct best; a small local model is free but rougher. The README publishes the measurements, so you can pick with open eyes.</span></li>
+      </ul>
+      <figure style="margin:0">
+        <img src="screenshots/settings.png" width="1056" height="907"
+             alt="TextFix settings window: provider selection, API key field, model picker with a connection test, hotkey and auto-apply options, all in a dark theme.">
+        <figcaption>Every provider keeps its own model and key. Switch from the overlay's “Via” dropdown whenever you like.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <h2>Small tool, small footprint</h2>
+    <p class="sub">One tray icon, one hotkey, a single settings file. Auto-updates in the background via GitHub Releases.
+      The About window keeps a local tally of corrections made, time saved, and what this month's API calls actually cost —
+      typically a fraction of a cent per correction.</p>
+    <div class="cta-row">
+      <a class="btn" href="https://github.com/agnt-labs-oz/TextFix/releases/latest/download/TextFix-win-Setup.exe">Download TextFix</a>
+      <a class="btn ghost" href="https://github.com/agnt-labs-oz/TextFix/releases">All releases</a>
+    </div>
+    <p class="fineprint">The installer is currently unsigned — SmartScreen will ask once. The source is public if you'd rather build it yourself.</p>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>TextFix is MIT-licensed and built in the open.</span>
+    <div class="links">
+      <a href="https://github.com/agnt-labs-oz/TextFix">GitHub</a>
+      <a href="https://github.com/agnt-labs-oz/TextFix/issues/new?template=bug_report.yml">Report an issue</a>
+      <a href="https://github.com/agnt-labs-oz/TextFix/discussions/new?category=ideas">Suggest a feature</a>
+      <a href="https://ko-fi.com/3smallwins">Support TextFix ☕</a>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

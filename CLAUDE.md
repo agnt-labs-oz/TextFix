@@ -14,7 +14,9 @@ Text can be corrected by Anthropic, a local Ollama model, OpenAI, or any OpenAI-
 A failed correction quotes the API's own explanation and always writes a log line at the default log level. See the diagnostics entries under Key Design Decisions before touching a provider's catch chain.
 
 ### Future
-Real-time auto-correction, streaming responses, Google Gemini (its API is not OpenAI-compatible, so it needs a real provider rather than a preset row), a marketing webpage.
+Real-time auto-correction, streaming responses, Google Gemini (its API is not OpenAI-compatible, so it needs a real provider rather than a preset row).
+
+The marketing page lives at `docs/index.html`, served by GitHub Pages from `/docs` on master — plain HTML/CSS, no build step. It references `docs/screenshots/*.png` by name, so retaking a screenshot at the same path updates the page. `PRODUCT.md` at the repo root carries the page's design context.
 
 ## Tech Stack
 
