@@ -53,7 +53,13 @@ public static class AuthenticodeVerifier
 
         try
         {
+            // SYSLIB0057 wants X509CertificateLoader, but that loads certificate FILES —
+            // there is no non-obsolete API for extracting the signer certificate out of
+            // a signed PE. CreateFromSignedFile remains the supported way to do exactly
+            // this; suppress rather than churn through SignedCms for the same bytes.
+#pragma warning disable SYSLIB0057
             using var signer = new X509Certificate2(X509Certificate.CreateFromSignedFile(filePath));
+#pragma warning restore SYSLIB0057
             var cn = signer.GetNameInfo(X509NameType.SimpleName, forIssuer: false);
             if (!string.Equals(cn, requiredSubjectCn, StringComparison.Ordinal))
                 return new Result(false, $"Signed by \"{cn}\" — expected \"{requiredSubjectCn}\".");

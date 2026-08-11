@@ -21,6 +21,13 @@ design: the download must be HTTPS from the official host, and the installer's
   S=Ontario, C=CA`, issued by DigiCert, embedded signature, status Valid. The
   verifier pins the CN **Ollama Inc.** (extracted via `GetNameInfo`, exact match —
   not a substring test on the DN) on top of chain validity.
+- **The pin was then proven against the real deliverable, not just installed
+  binaries:** the full 1,563,939,896-byte v0.32.7 installer was downloaded through
+  the shipping `DownloadInstallerAsync` and passed the shipping verifier
+  (`Valid signature from "Ollama Inc."`); a wrong-CN control on the same file was
+  rejected. The 0.32.6-binaries pin and the 0.32.7-installer signer agree, so a
+  signing-identity rotation between releases would have been caught here rather
+  than by the first user.
 - Server: `http://localhost:11434`, `GET /api/version` answers when up. The installer
   starts the app on completion and registers launch-at-login; no admin rights needed
   (per-user install to `%LOCALAPPDATA%\Programs\Ollama`).
@@ -64,9 +71,14 @@ States (each shows a progress line; Cancel is live throughout):
    hardware guidance — `llama3.2:3b` (2 GB, "works on any machine, occasional rough
    edit") preselected, `qwen2.5:7b` (4.7 GB, "better quality, wants a GPU").
    NDJSON progress, cancellable.
-6. **Done.** Write the pulled model into the Ollama provider config if it has none,
-   flag `SettingsChanged` so the existing rebuild path picks it up, prompt the user
-   to hit Test connection.
+6. **Done.** The dialog hands the ready model back to Settings, which fills the
+   still-visible model box only if it is empty — it does NOT write config directly,
+   so the change flows through the normal Save path and Cancel still cancels it.
+   (Settings mutating live state before Save is a defect this project has already
+   declined to add more of.) When several models are present,
+   `OllamaSetup.ChooseReadyModel` prefers a recommended one over `/api/tags`'s
+   newest-first order, which on this very machine would otherwise auto-fill a 26B
+   model measured unusable on its CPU.
 
 ## New code
 
